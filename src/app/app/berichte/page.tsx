@@ -14,6 +14,7 @@ import {
   reportScopeSearchParams,
   resolveReportScope,
 } from "@/lib/reports/scope";
+import { documentStatusRequiresAttention } from "@/lib/documents/status";
 import { fetchAllRows } from "@/lib/supabase/pagination";
 import { createClient } from "@/lib/supabase/server";
 
@@ -282,7 +283,7 @@ export default async function ReportsPage({
     .filter((entry) => entry.payment_status === "paid")
     .reduce((sum, entry) => sum + Number(entry.amount_cents), 0);
   const missingReceipts = expenses.filter((entry) =>
-    ["missing", "unreadable", "unclear"].includes(entry.document_status),
+    documentStatusRequiresAttention(entry.document_status),
   ).length;
   const reviewDocuments = documents.filter(
     (document) =>

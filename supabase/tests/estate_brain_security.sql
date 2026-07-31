@@ -167,8 +167,78 @@ begin
        'authenticated',
        'public.get_tenant_portal_context(uuid)',
        'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'public.resume_portfolio_onboarding(uuid,jsonb)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'authenticated',
+       'public.resume_portfolio_onboarding(uuid,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'public.create_organization_with_owner(text,text,jsonb,text,integer)',
+       'EXECUTE'
      ) then
     raise exception 'Unexpected onboarding or tenant portal RPC privileges';
+  end if;
+
+  if not exists (
+    select 1
+      from pg_catalog.pg_constraint
+     where conname = 'rent_payments_organization_claim_fkey'
+       and conrelid = 'public.rent_payments'::regclass
+  ) then
+    raise exception 'Rent payments are not bound to the claim organization';
+  end if;
+
+  if has_table_privilege(
+       'authenticated',
+       'public.rent_claims',
+       'INSERT'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.rent_claims',
+       'UPDATE'
+     )
+     or exists (
+       select 1
+         from pg_catalog.pg_policies
+        where schemaname = 'public'
+          and tablename = 'rent_claims'
+          and cmd in ('INSERT', 'UPDATE')
+     ) then
+    raise exception 'Browser clients can forge derived rent-claim state';
+  end if;
+
+  if exists (
+    select 1
+      from pg_catalog.pg_policies
+     where schemaname = 'public'
+       and (
+         (
+           tablename in ('conversations', 'maintenance_requests')
+           and cmd = 'INSERT'
+           and position(
+             'current_member_role(organization_id) = ''tenant'''
+             in lower(coalesce(with_check, ''))
+           ) > 0
+         )
+         or (
+           tablename = 'messages'
+           and cmd in ('INSERT', 'UPDATE')
+           and position(
+             'is_tenant_for_tenant'
+             in lower(coalesce(with_check, ''))
+           ) > 0
+         )
+       )
+  ) then
+    raise exception 'Tenant portal tables still permit direct tenant writes';
   end if;
 
   if has_function_privilege(
@@ -258,6 +328,18 @@ begin
 
   if v_count <> 1 then
     raise exception 'Append-only audit trigger is missing';
+  end if;
+
+  select count(*)
+    into v_count
+    from pg_catalog.pg_trigger as trigger_row
+   where trigger_row.tgrelid = 'public.properties'::regclass
+     and not trigger_row.tgisinternal
+     and trigger_row.tgenabled <> 'D'
+     and trigger_row.tgname = 'properties_market_value_projection_guard';
+
+  if v_count <> 1 then
+    raise exception 'Property market-value projection guard is missing';
   end if;
 
   select count(*)
@@ -526,7 +608,8 @@ begin
      and (
        pg_catalog.array_length(fk.conkey, 1) <> 1
        or pg_catalog.array_length(fk.confkey, 1) <> 1
-     );
+     )
+     and fk.conname <> 'rent_payments_organization_claim_fkey';
 
   if v_count <> 0 then
     raise exception

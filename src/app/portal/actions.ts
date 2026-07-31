@@ -1,41 +1,42 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { requireOrganization } from "@/lib/auth/dal";
+import { isCurrentTenantLease } from "@/lib/portal/lease";
 import { createClient } from "@/lib/supabase/server";
+import {
+  parseTenantConversationFormData,
+  parseTenantMaintenanceRequestFormData,
+  parseTenantReplyFormData,
+} from "@/lib/validation/tenant-portal";
 
-const messageSchema = z.object({
-  subject: z.string().trim().min(3).max(240),
-  body: z.string().trim().min(2).max(20_000),
-  category: z.enum([
-    "repair",
-    "damage",
-    "utilities",
-    "payment",
-    "document",
-    "general",
-  ]),
-});
+export type TenantPortalActionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  errors?: Record<string, string[]>;
+};
 
-const replySchema = z.object({
-  conversationId: z.string().uuid(),
-  body: z.string().trim().min(2).max(20_000),
-});
+type PortalError = {
+  code?: string;
+};
 
-const requestSchema = z.object({
-  title: z.string().trim().min(3).max(240),
-  description: z.string().trim().min(5).max(20_000),
-  category: z.enum([
-    "repair",
-    "damage",
-    "heating",
-    "water",
-    "electrical",
-    "security",
-    "other",
-  ]),
-});
+function actionError(message: string): TenantPortalActionState {
+  return { status: "error", message };
+}
+
+function databaseErrorMessage(error: PortalError | null, fallback: string) {
+  switch (error?.code) {
+    case "42501":
+      return "Du bist für diese Aktion nicht berechtigt.";
+    case "P0002":
+      return "Das aktive Mietverhältnis oder die Unterhaltung ist nicht mehr verfügbar. Bitte aktualisiere die Seite.";
+    case "22023":
+    case "23514":
+      return "Die Angaben sind ungültig. Bitte prüfe das Formular.";
+    default:
+      return fallback;
+  }
+}
 
 function dateInBerlin() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -50,126 +51,171 @@ function dateInBerlin() {
 
 async function getTenantScope() {
   const viewer = await requireOrganization();
-  if (viewer.role !== "tenant") throw new Error("Nicht berechtigt.");
+  if (viewer.role !== "tenant") {
+    return {
+      ok: false as const,
+      state: actionError("Nur Mieterkonten können das Mieterportal verwenden."),
+    };
+  }
 
   const supabase = await createClient();
   const { data: contexts, error } = await supabase.rpc(
     "get_tenant_portal_context",
     { p_organization_id: viewer.organizationId },
   );
-  if (error) throw new Error("Mieterprofil nicht gefunden.");
+  if (error) {
+    return {
+      ok: false as const,
+      state: actionError(
+        databaseErrorMessage(
+          error,
+          "Dein Mieterprofil konnte nicht geladen werden. Bitte versuche es erneut.",
+        ),
+      ),
+    };
+  }
 
   const today = dateInBerlin();
-  const context = contexts?.find(
-    (item) =>
-      ["active", "notice_given"].includes(item.lease_status) &&
-      item.lease_starts_on <= today &&
-      (!item.lease_ends_on || item.lease_ends_on >= today),
-  );
+  const context = contexts?.find((item) => isCurrentTenantLease(item, today));
   if (!context) {
-    throw new Error("Kein aktuell aktives Mietverhältnis gefunden.");
+    return {
+      ok: false as const,
+      state: actionError(
+        "Für diese Aktion brauchst du ein aktuell aktives Mietverhältnis.",
+      ),
+    };
   }
 
   return {
+    ok: true as const,
     supabase,
     viewer,
-    tenantId: context.tenant_id,
     leaseId: context.lease_id,
-    unitId: context.unit_id,
-    propertyId: context.property_id,
   };
 }
 
-export async function createTenantConversationAction(formData: FormData) {
-  const parsed = messageSchema.safeParse({
-    subject: formData.get("subject"),
-    body: formData.get("body"),
-    category: formData.get("category"),
-  });
-  if (!parsed.success) return;
+export async function createTenantConversationAction(
+  _state: TenantPortalActionState,
+  formData: FormData,
+): Promise<TenantPortalActionState> {
+  const parsed = parseTenantConversationFormData(formData);
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Bitte prüfe die markierten Angaben.",
+      errors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
 
   const scope = await getTenantScope();
-  const { data: conversation, error } = await scope.supabase
-    .from("conversations")
-    .insert({
-      organization_id: scope.viewer.organizationId,
-      property_id: scope.propertyId,
-      unit_id: scope.unitId,
-      lease_id: scope.leaseId,
-      subject: parsed.data.subject,
-      category: parsed.data.category,
-      priority: parsed.data.category === "damage" ? "high" : "medium",
-      status: "open",
-      is_internal: false,
-      last_message_at: new Date().toISOString(),
-      created_by: scope.viewer.userId,
-    })
-    .select("id")
-    .single();
-  if (error || !conversation) return;
+  if (!scope.ok) return scope.state;
 
-  await scope.supabase.from("messages").insert({
-    organization_id: scope.viewer.organizationId,
-    conversation_id: conversation.id,
-    author_user_id: null,
-    author_tenant_id: scope.tenantId,
-    body: parsed.data.body,
-    is_internal_note: false,
-    created_by: scope.viewer.userId,
-  });
+  const { error } = await scope.supabase.rpc(
+    "create_tenant_portal_conversation",
+    {
+      p_organization_id: scope.viewer.organizationId,
+      p_lease_id: scope.leaseId,
+      p_subject: parsed.data.subject,
+      p_category: parsed.data.category,
+      p_body: parsed.data.body,
+    },
+  );
+  if (error) {
+    return actionError(
+      databaseErrorMessage(
+        error,
+        "Die Nachricht konnte nicht gesendet werden. Es wurden keine Teildaten gespeichert.",
+      ),
+    );
+  }
+
   revalidatePath("/portal");
+  return {
+    status: "success",
+    message: "Deine Nachricht wurde an die Verwaltung gesendet.",
+  };
 }
 
-export async function replyToConversationAction(formData: FormData) {
-  const parsed = replySchema.safeParse({
-    conversationId: formData.get("conversationId"),
-    body: formData.get("body"),
-  });
-  if (!parsed.success) return;
+export async function replyToConversationAction(
+  _state: TenantPortalActionState,
+  formData: FormData,
+): Promise<TenantPortalActionState> {
+  const parsed = parseTenantReplyFormData(formData);
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Bitte prüfe deine Antwort.",
+      errors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
 
   const scope = await getTenantScope();
-  const { data: conversation } = await scope.supabase
-    .from("conversations")
-    .select("id")
-    .eq("organization_id", scope.viewer.organizationId)
-    .eq("id", parsed.data.conversationId)
-    .eq("is_internal", false)
-    .maybeSingle();
-  if (!conversation) return;
+  if (!scope.ok) return scope.state;
 
-  await scope.supabase.from("messages").insert({
-    organization_id: scope.viewer.organizationId,
-    conversation_id: conversation.id,
-    author_user_id: null,
-    author_tenant_id: scope.tenantId,
-    body: parsed.data.body,
-    is_internal_note: false,
-    created_by: scope.viewer.userId,
-  });
+  const { error } = await scope.supabase.rpc(
+    "reply_tenant_portal_conversation",
+    {
+      p_organization_id: scope.viewer.organizationId,
+      p_conversation_id: parsed.data.conversationId,
+      p_body: parsed.data.body,
+    },
+  );
+  if (error) {
+    return actionError(
+      databaseErrorMessage(
+        error,
+        "Deine Antwort konnte nicht gesendet werden. Bitte versuche es erneut.",
+      ),
+    );
+  }
+
   revalidatePath("/portal");
+  return {
+    status: "success",
+    message: "Deine Antwort wurde gesendet.",
+  };
 }
 
-export async function createMaintenanceRequestAction(formData: FormData) {
-  const parsed = requestSchema.safeParse({
-    title: formData.get("title"),
-    description: formData.get("description"),
-    category: formData.get("category"),
-  });
-  if (!parsed.success) return;
+export async function createMaintenanceRequestAction(
+  _state: TenantPortalActionState,
+  formData: FormData,
+): Promise<TenantPortalActionState> {
+  const parsed = parseTenantMaintenanceRequestFormData(formData);
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Bitte prüfe die markierten Angaben.",
+      errors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
 
   const scope = await getTenantScope();
-  await scope.supabase.from("maintenance_requests").insert({
-    organization_id: scope.viewer.organizationId,
-    property_id: scope.propertyId,
-    unit_id: scope.unitId,
-    lease_id: scope.leaseId,
-    tenant_id: scope.tenantId,
-    title: parsed.data.title,
-    description: parsed.data.description,
-    category: parsed.data.category,
-    priority: parsed.data.category === "damage" ? "high" : "medium",
-    status: "open",
-    created_by: scope.viewer.userId,
-  });
+  if (!scope.ok) return scope.state;
+
+  const { error } = await scope.supabase.rpc(
+    "create_tenant_portal_maintenance_request",
+    {
+      p_organization_id: scope.viewer.organizationId,
+      p_lease_id: scope.leaseId,
+      p_title: parsed.data.title,
+      p_description: parsed.data.description,
+      p_category: parsed.data.category,
+    },
+  );
+  if (error) {
+    return actionError(
+      databaseErrorMessage(
+        error,
+        "Das Anliegen konnte nicht gespeichert werden. Bitte versuche es erneut.",
+      ),
+    );
+  }
+
   revalidatePath("/portal");
+  revalidatePath("/app/aufgaben");
+  revalidatePath("/app");
+  return {
+    status: "success",
+    message: "Dein Anliegen wurde an die Verwaltung übermittelt.",
+  };
 }

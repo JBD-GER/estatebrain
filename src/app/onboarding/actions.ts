@@ -1,30 +1,28 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { onboardingSchema, type OnboardingInput } from "@/lib/validation/onboarding";
+import {
+  emptyOnboardingSchema,
+  onboardingSchema,
+  type EmptyOnboardingInput,
+  type OnboardingInput,
+} from "@/lib/validation/onboarding";
 import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/lib/auth/dal";
+import type { Json } from "@/types/database";
 
 export type OnboardingResult = {
   success: boolean;
   message: string;
 };
 
-export async function completeOnboardingAction(
-  input: OnboardingInput,
+async function persistOnboarding(
+  payload: Json,
+  successMessage: string,
+  resumeExistingOrganization = false,
 ): Promise<OnboardingResult> {
-  const parsed = onboardingSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      message:
-        parsed.error.issues[0]?.message ??
-        "Bitte prüfe die Angaben im Onboarding.",
-    };
-  }
-
   const viewer = await requireViewer();
-  if (viewer.organizationId) {
+  if (viewer.organizationId && !resumeExistingOrganization) {
     return {
       success: true,
       message: "Deine Organisation ist bereits eingerichtet.",
@@ -32,10 +30,12 @@ export async function completeOnboardingAction(
   }
 
   const supabase = await createClient();
-  const { data: organizationId, error } = await supabase.rpc(
-    "complete_onboarding",
-    { p_payload: parsed.data },
-  );
+  const { data: organizationId, error } = viewer.organizationId
+    ? await supabase.rpc("resume_portfolio_onboarding", {
+        p_organization_id: viewer.organizationId,
+        p_payload: payload,
+      })
+    : await supabase.rpc("complete_onboarding", { p_payload: payload });
 
   if (error || typeof organizationId !== "string") {
     return {
@@ -55,6 +55,52 @@ export async function completeOnboardingAction(
 
   return {
     success: true,
-    message: "Estate Brain ist eingerichtet. Dein Dashboard wird vorbereitet.",
+    message: successMessage,
   };
+}
+
+export async function completeOnboardingAction(
+  input: OnboardingInput,
+): Promise<OnboardingResult> {
+  const parsed = onboardingSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      message:
+        parsed.error.issues[0]?.message ??
+        "Bitte prüfe die Angaben im Onboarding.",
+    };
+  }
+
+  return persistOnboarding(
+    {
+      ...parsed.data,
+      setupMode: "portfolio",
+    },
+    "Estate Brain ist eingerichtet. Dein Dashboard wird vorbereitet.",
+    true,
+  );
+}
+
+export async function completeEmptyOnboardingAction(
+  input: EmptyOnboardingInput,
+): Promise<OnboardingResult> {
+  const parsed = emptyOnboardingSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      message:
+        parsed.error.issues[0]?.message ??
+        "Bitte prüfe die Organisationsdaten.",
+    };
+  }
+
+  return persistOnboarding(
+    {
+      ...parsed.data,
+      setupMode: "empty",
+      importMode: "none",
+    },
+    "Deine leere Organisation ist eingerichtet. Du kannst jetzt in Ruhe starten.",
+  );
 }

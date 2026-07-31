@@ -58,5 +58,10 @@ describe("fiktives Demo-Datenset", () => {
     ).toBe(true);
     expect(new Set(DEMO_DATA.invoices.map((invoice) => invoice.receiptStatus)).size)
       .toBeGreaterThanOrEqual(3);
+    expect(
+      DEMO_DATA.invoices.some(
+        (invoice) => invoice.receiptStatus === "unclear_assignment",
+      ),
+    ).toBe(true);
   });
 });

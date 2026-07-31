@@ -21,6 +21,7 @@ export default async function ModulePage({
       definition={data.definition}
       rows={data.rows}
       relations={data.relations}
+      relationErrors={data.relationErrors}
       error={data.error}
       forbidden={data.forbidden}
       canCreate={data.canCreate}

@@ -4014,6 +4014,17 @@ export type Database = {
         Args: { p_match_id: string }
         Returns: string
       }
+      create_valuation: {
+        Args: {
+          p_market_value_cents: number
+          p_organization_id: string
+          p_property_id: string
+          p_source_name: string
+          p_source_type: string
+          p_valued_on: string
+        }
+        Returns: string
+      }
       create_organization_with_owner: {
         Args: {
           p_address: Json
@@ -4035,6 +4046,26 @@ export type Database = {
         }
         Returns: string
       }
+      create_tenant_portal_conversation: {
+        Args: {
+          p_body: string
+          p_category: string
+          p_lease_id: string
+          p_organization_id: string
+          p_subject: string
+        }
+        Returns: string
+      }
+      create_tenant_portal_maintenance_request: {
+        Args: {
+          p_category: string
+          p_description: string
+          p_lease_id: string
+          p_organization_id: string
+          p_title: string
+        }
+        Returns: string
+      }
       create_tenant_lease: {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: Json
@@ -4053,6 +4084,8 @@ export type Database = {
           lease_starts_on: string
           lease_status: string
           other_rent_cents: number
+          occupancy_ends_on: string
+          occupancy_starts_on: string
           parking_rent_cents: number
           property_city: string
           property_house_number: string
@@ -4070,6 +4103,18 @@ export type Database = {
           p_body: string
           p_conversation_id: string
           p_internal_note?: boolean
+          p_organization_id: string
+        }
+        Returns: string
+      }
+      resume_portfolio_onboarding: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: string
+      }
+      reply_tenant_portal_conversation: {
+        Args: {
+          p_body: string
+          p_conversation_id: string
           p_organization_id: string
         }
         Returns: string

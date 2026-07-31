@@ -481,7 +481,7 @@ export const DEMO_DATA: DemoDataset = {
       invoiceDate: "2026-07-18",
       issuer: "Fiktivbau KG (fiktiv)",
       grossAmountCents: 350_000,
-      receiptStatus: "unclear",
+      receiptStatus: "unclear_assignment",
       paymentStatus: "open",
       isDemo: true,
     },

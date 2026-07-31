@@ -6,6 +6,7 @@ import {
   canAccessSensitiveReportData,
   resolveReportScope,
 } from "@/lib/reports/scope";
+import { documentStatusRequiresAttention } from "@/lib/documents/status";
 import { fetchAllRows } from "@/lib/supabase/pagination";
 import { createClient } from "@/lib/supabase/server";
 
@@ -340,7 +341,7 @@ export async function GET(request: NextRequest) {
       paidExpenseCents,
       openRentCents,
       missingReceiptCount: expenses.filter((entry) =>
-        ["missing", "unreadable", "unclear"].includes(entry.document_status),
+        documentStatusRequiresAttention(entry.document_status),
       ).length,
       unresolvedTransactionCount: unresolvedTransactionsResult.count,
       assumedTaxRate: validTaxRate,

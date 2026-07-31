@@ -14,6 +14,8 @@ import {
   safeInternalPath,
   trustedApplicationOrigin,
 } from "@/lib/security/redirects";
+import { registrationErrorMessage } from "@/lib/auth/errors";
+import { loginDestination } from "@/lib/auth/flow";
 
 export type AuthActionState = {
   status: "idle" | "error" | "success";
@@ -106,11 +108,7 @@ export async function loginAction(
   }
 
   revalidatePath("/", "layout");
-  redirect(
-    requestedDestination === "/app" && selectedRole === "tenant"
-      ? "/portal"
-      : requestedDestination,
-  );
+  redirect(loginDestination(requestedDestination, selectedRole));
 }
 
 export async function registrationAction(
@@ -148,10 +146,7 @@ export async function registrationAction(
   if (error) {
     return {
       status: "error",
-      message:
-        error.code === "user_already_exists"
-          ? "Für diese E-Mail-Adresse besteht bereits ein Konto."
-          : "Die Registrierung konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
+      message: registrationErrorMessage(error),
     };
   }
 

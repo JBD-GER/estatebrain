@@ -11,7 +11,6 @@ import {
   Download,
   FilePlus2,
   Loader2,
-  MoreHorizontal,
   Plus,
   Search,
   Upload,
@@ -28,12 +27,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -61,6 +54,7 @@ import type {
 } from "@/lib/modules";
 import type {
   ModuleRow,
+  RelationLoadErrors,
   RelationOptions,
 } from "@/lib/data/modules";
 import {
@@ -68,6 +62,12 @@ import {
   type CreateRecordState,
 } from "@/app/app/[module]/actions";
 import { cn } from "@/lib/utils";
+import { documentStatusRequiresAttention } from "@/lib/documents/status";
+import {
+  getModuleRowAction,
+  type ModuleRowAction,
+} from "@/lib/modules/interactions";
+import { moduleRowRequiresAttention } from "@/lib/modules/summary";
 
 const initialState: CreateRecordState = { status: "idle" };
 
@@ -97,8 +97,8 @@ const statusLabels: Record<string, string> = {
   verified: "Geprüft",
   missing: "Beleg fehlt",
   unreadable: "Unleserlich",
-  unclear: "Unklar",
-  review: "Prüfung nötig",
+  unclear_assignment: "Zuordnung unklar",
+  review_required: "Prüfung erforderlich",
   high: "Hoch",
   medium: "Mittel",
   low: "Niedrig",
@@ -144,7 +144,10 @@ function badgeVariant(value: unknown) {
   if (["paid", "completed", "verified", "active", "connected"].includes(key)) {
     return "default" as const;
   }
-  if (["missing", "unreadable", "urgent", "overdue"].includes(key)) {
+  if (
+    documentStatusRequiresAttention(key) ||
+    ["urgent", "overdue"].includes(key)
+  ) {
     return "destructive" as const;
   }
   return "secondary" as const;
@@ -155,16 +158,66 @@ function relationOptions(field: ModuleField, relations: RelationOptions) {
   return relations[field.relation];
 }
 
+const relationLabels: Record<keyof RelationOptions, string> = {
+  properties: "Immobilien",
+  units: "Einheiten",
+  tenants: "Mieter",
+};
+
+function RowActionLink({ action }: { action: ModuleRowAction }) {
+  const content = (
+    <>
+      {action.kind === "download" ? (
+        <Download />
+      ) : action.kind === "review" ? (
+        <CheckCircle2 />
+      ) : (
+        <ArrowUpRight />
+      )}
+      {action.label}
+    </>
+  );
+
+  return (
+    <Button asChild variant="ghost" size="sm">
+      {action.kind === "download" ? (
+        <a href={action.href}>{content}</a>
+      ) : (
+        <Link href={action.href}>{content}</Link>
+      )}
+    </Button>
+  );
+}
+
 function CreateRecordDialog({
   definition,
   relations,
+  relationErrors,
 }: {
   definition: ModuleDefinition;
   relations: RelationOptions;
+  relationErrors: RelationLoadErrors;
 }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState(initialState);
   const [pending, startTransition] = useTransition();
+  const hasRelationLoadError = definition.fields.some(
+    (field) => field.relation && relationErrors[field.relation],
+  );
+  const hasMissingRequiredRelation = definition.fields.some(
+    (field) =>
+      field.required &&
+      field.relation &&
+      !relationErrors[field.relation] &&
+      relations[field.relation].length === 0,
+  );
+  const hasBlockingRelationIssue = definition.fields.some(
+    (field) =>
+      field.required &&
+      field.relation &&
+      (relationErrors[field.relation] ||
+        relations[field.relation].length === 0),
+  );
 
   useEffect(() => {
     if (state.status === "success") {
@@ -204,9 +257,40 @@ function CreateRecordDialog({
               <AlertDescription>{state.message}</AlertDescription>
             </Alert>
           ) : null}
+          {hasRelationLoadError ? (
+            <Alert variant="destructive" className="sm:col-span-2">
+              <CircleAlert />
+              <AlertTitle>Auswahldaten nicht verfügbar</AlertTitle>
+              <AlertDescription>
+                Mindestens eine Auswahlliste konnte nicht geladen werden. Bitte
+                schließe den Dialog und lade die Seite neu.
+              </AlertDescription>
+            </Alert>
+          ) : hasMissingRequiredRelation ? (
+            <Alert className="sm:col-span-2">
+              <CircleAlert />
+              <AlertTitle>Voraussetzung fehlt</AlertTitle>
+              <AlertDescription>
+                Für die Anlage fehlt noch ein benötigter Stammdatensatz.
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {definition.fields.map((field) => {
             const fieldError = state.errors?.[field.name]?.[0];
             const options = relationOptions(field, relations);
+            const relationLoadFailed = field.relation
+              ? Boolean(relationErrors[field.relation])
+              : false;
+            const relationIsEmpty = Boolean(
+              field.relation && options.length === 0,
+            );
+            const relationMessage = field.relation
+              ? relationLoadFailed
+                ? "Auswahldaten konnten nicht geladen werden. Bitte lade die Seite neu."
+                : relationIsEmpty
+                  ? `Noch keine ${relationLabels[field.relation]} verfügbar.`
+                  : null
+              : null;
             return (
               <div
                 className={cn(
@@ -220,8 +304,18 @@ function CreateRecordDialog({
                   {field.required ? " *" : ""}
                 </Label>
                 {field.type === "select" ? (
-                  <Select name={field.name} required={field.required}>
-                    <SelectTrigger id={field.name} aria-invalid={Boolean(fieldError)}>
+                  <Select
+                    name={field.name}
+                    required={field.required}
+                    disabled={Boolean(
+                      field.relation &&
+                        (relationLoadFailed || relationIsEmpty),
+                    )}
+                  >
+                    <SelectTrigger
+                      id={field.name}
+                      aria-invalid={Boolean(fieldError || relationLoadFailed)}
+                    >
                       <SelectValue placeholder="Bitte auswählen" />
                     </SelectTrigger>
                     <SelectContent>
@@ -273,6 +367,17 @@ function CreateRecordDialog({
                 )}
                 {fieldError ? (
                   <p className="text-xs text-destructive">{fieldError}</p>
+                ) : relationMessage ? (
+                  <p
+                    className={cn(
+                      "text-xs",
+                      relationLoadFailed
+                        ? "text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {relationMessage}
+                  </p>
                 ) : null}
               </div>
             );
@@ -285,7 +390,10 @@ function CreateRecordDialog({
             >
               Abbrechen
             </Button>
-            <Button type="submit" disabled={pending}>
+            <Button
+              type="submit"
+              disabled={pending || hasBlockingRelationIssue}
+            >
               {pending ? <Loader2 className="animate-spin" /> : null}
               Speichern
             </Button>
@@ -308,17 +416,7 @@ function ModuleSummary({
   const total = moneyKey
     ? rows.reduce((sum, row) => sum + (Number(row[moneyKey]) || 0), 0)
     : 0;
-  const attention = rows.filter((row) =>
-    ["open", "missing", "urgent", "overdue", "unclear", "review"].includes(
-      String(
-        row.status ??
-          row.receipt_status ??
-          row.payment_status ??
-          row.priority ??
-          "",
-      ),
-    ),
-  ).length;
+  const attention = rows.filter(moduleRowRequiresAttention).length;
   const timestamped = rows.filter((row) => {
     const date = new Date(String(row.updated_at ?? row.created_at ?? ""));
     return !Number.isNaN(date.valueOf());
@@ -428,6 +526,7 @@ export function ModuleWorkspace({
   definition,
   rows,
   relations,
+  relationErrors,
   error,
   forbidden,
   canCreate,
@@ -437,6 +536,7 @@ export function ModuleWorkspace({
   definition: ModuleDefinition;
   rows: ModuleRow[];
   relations: RelationOptions;
+  relationErrors: RelationLoadErrors;
   error: string | null;
   forbidden: boolean;
   canCreate: boolean;
@@ -453,6 +553,13 @@ export function ModuleWorkspace({
       ),
     );
   }, [query, rows]);
+  const hasRowActions = useMemo(
+    () =>
+      rows.some((row) =>
+        Boolean(getModuleRowAction(definition.slug, row.id)),
+      ),
+    [definition.slug, rows],
+  );
 
   if (forbidden) {
     return (
@@ -498,7 +605,11 @@ export function ModuleWorkspace({
         </Button>
       </>
     ) : !definition.readOnly && definition.fields.length && canCreate ? (
-      <CreateRecordDialog definition={definition} relations={relations} />
+      <CreateRecordDialog
+        definition={definition}
+        relations={relations}
+        relationErrors={relationErrors}
+      />
     ) : undefined;
   const actions =
     headerActions || defaultActions ? (
@@ -577,70 +688,49 @@ export function ModuleWorkspace({
                     {definition.columns.map((column) => (
                       <TableHead key={column.key}>{column.label}</TableHead>
                     ))}
-                    <TableHead className="w-14">
-                      <span className="sr-only">Aktionen</span>
-                    </TableHead>
+                    {hasRowActions ? (
+                      <TableHead className="w-44">Aktion</TableHead>
+                    ) : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRows.map((row, rowIndex) => (
-                    <TableRow key={text(row.id) || rowIndex}>
-                      {definition.columns.map((column) => (
-                        <TableCell
-                          key={column.key}
-                          className={cn(
-                            column.format === "money" &&
-                              "font-mono tabular-nums",
-                            column.key === definition.columns[0]?.key &&
-                              "font-medium",
-                          )}
-                        >
-                          {column.format === "status" ? (
-                            <Badge variant={badgeVariant(row[column.key])}>
-                              {formatCell(row[column.key], column.format)}
-                            </Badge>
-                          ) : (
-                            formatCell(row[column.key], column.format)
-                          )}
-                        </TableCell>
-                      ))}
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Datensatzaktionen"
-                            >
-                              <MoreHorizontal />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {definition.slug === "immobilien" && row.id ? (
-                              <DropdownMenuItem asChild>
-                                <Link href={`/app/immobilien/${row.id}`}>
-                                  <ArrowUpRight />
-                                  Details öffnen
-                                </Link>
-                              </DropdownMenuItem>
-                            ) : definition.slug === "belege" && row.id ? (
-                              <DropdownMenuItem asChild>
-                                <a href={`/api/documents/${row.id}/download`}>
-                                  <Download />
-                                  Sicher herunterladen
-                                </a>
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem>
-                                <CheckCircle2 />
-                                Details prüfen
-                              </DropdownMenuItem>
+                  {filteredRows.map((row, rowIndex) => {
+                    const rowAction = getModuleRowAction(
+                      definition.slug,
+                      row.id,
+                    );
+
+                    return (
+                      <TableRow key={text(row.id) || rowIndex}>
+                        {definition.columns.map((column) => (
+                          <TableCell
+                            key={column.key}
+                            className={cn(
+                              column.format === "money" &&
+                                "font-mono tabular-nums",
+                              column.key === definition.columns[0]?.key &&
+                                "font-medium",
                             )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          >
+                            {column.format === "status" ? (
+                              <Badge variant={badgeVariant(row[column.key])}>
+                                {formatCell(row[column.key], column.format)}
+                              </Badge>
+                            ) : (
+                              formatCell(row[column.key], column.format)
+                            )}
+                          </TableCell>
+                        ))}
+                        {hasRowActions ? (
+                          <TableCell className="whitespace-nowrap">
+                            {rowAction ? (
+                              <RowActionLink action={rowAction} />
+                            ) : null}
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

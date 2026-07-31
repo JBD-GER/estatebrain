@@ -57,3 +57,14 @@ test("Login bietet alle Wiederherstellungswege", async ({ page }) => {
     "/passwort-vergessen",
   );
 });
+
+test("abgelaufene Bestätigung wird auf der Loginseite erklärt", async ({
+  page,
+}) => {
+  await page.goto("/login?error=confirm");
+  await expect(
+    page.getByText(
+      "Der Bestätigungslink ist abgelaufen oder ungültig. Bitte versuche die Registrierung erneut.",
+    ),
+  ).toBeVisible();
+});

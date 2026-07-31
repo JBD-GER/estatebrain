@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { useEffect, useState, useTransition } from "react";
+import {
+  useFieldArray,
+  useForm,
+  useWatch,
+  type FieldErrors,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import {
@@ -18,10 +23,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  nextOnboardingUnitNumber,
   onboardingSchema,
   type OnboardingInput,
 } from "@/lib/validation/onboarding";
-import { completeOnboardingAction } from "@/app/onboarding/actions";
+import {
+  completeEmptyOnboardingAction,
+  completeOnboardingAction,
+  type OnboardingResult,
+} from "@/app/onboarding/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,9 +46,13 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  legacyOnboardingDraftKey,
+  onboardingDraftKey,
+  onboardingDraftVersion,
+  parseOnboardingDraft,
+} from "@/lib/onboarding/draft";
 import { cn } from "@/lib/utils";
-
-const storageKey = "estatebrain:onboarding:v1";
 
 const steps = [
   { title: "Organisation", icon: Landmark },
@@ -81,7 +95,6 @@ const defaults: OnboardingInput = {
     landValue: 0,
     buildingValue: 0,
     totalArea: 0,
-    unitCount: 1,
     currentFinancing: 0,
     marketValue: 0,
     expectedMonthlyRent: 0,
@@ -126,7 +139,6 @@ const stepFields: Array<Array<keyof OnboardingInput | `organization.${string}` |
     "property.propertyType",
     "property.purchasePrice",
     "property.totalArea",
-    "property.unitCount",
   ],
   ["units"],
   ["importMode"],
@@ -180,14 +192,31 @@ function MoneyField({
   );
 }
 
-export function OnboardingWizard({ fullName }: { fullName: string | null }) {
+export function OnboardingWizard({
+  fullName,
+  userId,
+  initialOrganization,
+  initialTax,
+  resumeMode = false,
+}: {
+  fullName: string | null;
+  userId: string;
+  initialOrganization?: OnboardingInput["organization"];
+  initialTax?: OnboardingInput["tax"];
+  resumeMode?: boolean;
+}) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [pending, startTransition] = useTransition();
   const [hydrated, setHydrated] = useState(false);
+  const storageKey = onboardingDraftKey(userId);
   const form = useForm<OnboardingInput>({
     resolver: zodResolver(onboardingSchema),
-    defaultValues: defaults,
+    defaultValues: {
+      ...defaults,
+      organization: initialOrganization ?? defaults.organization,
+      tax: initialTax ?? defaults.tax,
+    },
     mode: "onBlur",
   });
   const { fields, append, remove } = useFieldArray({
@@ -197,48 +226,48 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
   const watchedValues = useWatch({ control: form.control });
 
   useEffect(() => {
-    let restoredValues: OnboardingInput | undefined;
-    let restoredStep = 0;
+    let restoredDraft: ReturnType<typeof parseOnboardingDraft> = null;
     try {
-      const saved = window.localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved) as {
-          step?: number;
-          values?: OnboardingInput;
-        };
-        restoredValues = parsed.values;
-        if (typeof parsed.step === "number") {
-          restoredStep = Math.min(
-            Math.max(parsed.step, 0),
-            steps.length - 1,
-          );
-        }
+      window.localStorage.removeItem(legacyOnboardingDraftKey);
+      restoredDraft = parseOnboardingDraft(
+        window.localStorage.getItem(storageKey),
+        steps.length,
+      );
+      if (!restoredDraft) {
+        window.localStorage.removeItem(storageKey);
       }
     } catch {
-      window.localStorage.removeItem(storageKey);
+      // Storage can be unavailable in private or restricted browser contexts.
     }
 
     const restoreTimer = window.setTimeout(() => {
-      if (restoredValues) form.reset(restoredValues);
-      setStep(restoredStep);
+      if (restoredDraft) {
+        form.reset(restoredDraft.values);
+        setStep(restoredDraft.step);
+      }
       setHydrated(true);
     }, 0);
 
     return () => window.clearTimeout(restoreTimer);
-  }, [form]);
+  }, [form, storageKey]);
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(
-      storageKey,
-      JSON.stringify({ step, values: watchedValues }),
-    );
-  }, [hydrated, step, watchedValues]);
+    try {
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          version: onboardingDraftVersion,
+          step,
+          values: watchedValues,
+        }),
+      );
+    } catch {
+      // The wizard remains usable even when persistent browser storage is off.
+    }
+  }, [hydrated, step, storageKey, watchedValues]);
 
-  const progress = useMemo(
-    () => ((step + 1) / steps.length) * 100,
-    [step],
-  );
+  const progress = ((step + 1) / steps.length) * 100;
 
   async function nextStep() {
     const valid = await form.trigger(stepFields[step] as never, {
@@ -247,18 +276,61 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
     if (valid) setStep((value) => Math.min(value + 1, steps.length - 1));
   }
 
+  function handleSuccess(
+    result: OnboardingResult,
+    clearDraft = true,
+  ) {
+    if (!result.success) {
+      toast.error(result.message);
+      return;
+    }
+    if (clearDraft) {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        // A completed setup must not depend on browser storage access.
+      }
+    }
+    toast.success(result.message);
+    router.replace("/app");
+    router.refresh();
+  }
+
   function finish(values: OnboardingInput) {
     startTransition(async () => {
       const result = await completeOnboardingAction(values);
-      if (!result.success) {
-        toast.error(result.message);
-        return;
-      }
-      window.localStorage.removeItem(storageKey);
-      toast.success(result.message);
-      router.replace("/app");
-      router.refresh();
+      handleSuccess(result);
     });
+  }
+
+  async function startEmpty() {
+    const valid = await form.trigger(stepFields[0] as never, {
+      shouldFocus: true,
+    });
+    if (!valid) return;
+
+    const values = form.getValues();
+    startTransition(async () => {
+      const result = await completeEmptyOnboardingAction({
+        organization: values.organization,
+        tax: values.tax,
+      });
+      handleSuccess(result, false);
+    });
+  }
+
+  function handleInvalid(errors: FieldErrors<OnboardingInput>) {
+    const invalidStep = errors.organization
+      ? 0
+      : errors.tax
+        ? 1
+        : errors.property
+          ? 2
+          : errors.units
+            ? 3
+            : 4;
+    setStep(invalidStep);
+    toast.error("Bitte prüfe die markierten Angaben.");
   }
 
   return (
@@ -268,7 +340,9 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
           Willkommen{fullName ? `, ${fullName.split(" ")[0]}` : ""}.
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-          Richten wir dein Portfolio ein
+          {resumeMode
+            ? "Setzen wir deine Portfolio-Einrichtung fort"
+            : "Richten wir dein Portfolio ein"}
         </h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">
           Du kannst alle Angaben später ändern. Steuerwerte sind ausschließlich
@@ -315,7 +389,7 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
         </ol>
       </div>
 
-      <form onSubmit={form.handleSubmit(finish)}>
+      <form onSubmit={form.handleSubmit(finish, handleInvalid)}>
         <Card>
           <CardHeader>
             <CardTitle>{steps[step]?.title}</CardTitle>
@@ -328,6 +402,9 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   <Input
                     id="organization.name"
                     placeholder="z. B. Immobilienverwaltung Mustermann"
+                    aria-invalid={Boolean(
+                      form.formState.errors.organization?.name,
+                    )}
                     {...form.register("organization.name")}
                   />
                   <FieldError
@@ -358,9 +435,17 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   <Input
                     id="organization.taxYear"
                     type="number"
+                    aria-invalid={Boolean(
+                      form.formState.errors.organization?.taxYear,
+                    )}
                     {...form.register("organization.taxYear", {
                       valueAsNumber: true,
                     })}
+                  />
+                  <FieldError
+                    message={
+                      form.formState.errors.organization?.taxYear?.message
+                    }
                   />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
@@ -368,7 +453,13 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   <Input
                     id="organization.street"
                     autoComplete="street-address"
+                    aria-invalid={Boolean(
+                      form.formState.errors.organization?.street,
+                    )}
                     {...form.register("organization.street")}
+                  />
+                  <FieldError
+                    message={form.formState.errors.organization?.street?.message}
                   />
                 </div>
                 <div className="space-y-2">
@@ -376,7 +467,15 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   <Input
                     id="organization.postalCode"
                     autoComplete="postal-code"
+                    aria-invalid={Boolean(
+                      form.formState.errors.organization?.postalCode,
+                    )}
                     {...form.register("organization.postalCode")}
+                  />
+                  <FieldError
+                    message={
+                      form.formState.errors.organization?.postalCode?.message
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -384,9 +483,40 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   <Input
                     id="organization.city"
                     autoComplete="address-level2"
+                    aria-invalid={Boolean(
+                      form.formState.errors.organization?.city,
+                    )}
                     {...form.register("organization.city")}
                   />
+                  <FieldError
+                    message={form.formState.errors.organization?.city?.message}
+                  />
                 </div>
+                {!resumeMode ? (
+                  <div className="flex flex-col gap-4 rounded-xl border border-dashed p-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium">Noch keine Immobiliendaten?</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Lege nur die Organisation an und starte mit einem
+                        vollständig leeren Dashboard. Die geführte Einrichtung
+                        kannst du dort jederzeit fortsetzen.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={startEmpty}
+                      disabled={pending}
+                    >
+                      {pending ? (
+                        <Loader2 className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <ArrowRight aria-hidden="true" />
+                      )}
+                      Leer starten
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -422,6 +552,9 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                         max="60"
                         step="0.1"
                         className="pr-10"
+                        aria-invalid={Boolean(
+                          form.formState.errors.tax?.marginalTaxRate,
+                        )}
                         {...form.register("tax.marginalTaxRate", {
                           setValueAs: (value) =>
                             value === "" ? null : Number(value),
@@ -431,6 +564,11 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                         %
                       </span>
                     </div>
+                    <FieldError
+                      message={
+                        form.formState.errors.tax?.marginalTaxRate?.message
+                      }
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="tax.effectiveTaxRate">
@@ -444,6 +582,9 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                         max="60"
                         step="0.1"
                         className="pr-10"
+                        aria-invalid={Boolean(
+                          form.formState.errors.tax?.effectiveTaxRate,
+                        )}
                         {...form.register("tax.effectiveTaxRate", {
                           setValueAs: (value) =>
                             value === "" ? null : Number(value),
@@ -453,11 +594,17 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                         %
                       </span>
                     </div>
+                    <FieldError
+                      message={
+                        form.formState.errors.tax?.effectiveTaxRate?.message
+                      }
+                    />
                   </div>
                   <MoneyField
                     id="tax.taxableIncome"
                     label="Zu versteuerndes Einkommen (freiwillig)"
                     registration={form.register}
+                    error={form.formState.errors.tax?.taxableIncome?.message}
                     nullable
                   />
                   <div className="space-y-2">
@@ -513,6 +660,9 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   <Input
                     id="property.name"
                     placeholder="z. B. Mehrfamilienhaus Lindenstraße"
+                    aria-invalid={Boolean(
+                      form.formState.errors.property?.name,
+                    )}
                     {...form.register("property.name")}
                   />
                   <FieldError
@@ -554,6 +704,9 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   <Label htmlFor="property.street">Straße und Hausnummer</Label>
                   <Input
                     id="property.street"
+                    aria-invalid={Boolean(
+                      form.formState.errors.property?.street,
+                    )}
                     {...form.register("property.street")}
                   />
                   <FieldError
@@ -564,12 +717,29 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   <Label htmlFor="property.postalCode">Postleitzahl</Label>
                   <Input
                     id="property.postalCode"
+                    aria-invalid={Boolean(
+                      form.formState.errors.property?.postalCode,
+                    )}
                     {...form.register("property.postalCode")}
+                  />
+                  <FieldError
+                    message={
+                      form.formState.errors.property?.postalCode?.message
+                    }
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="property.city">Ort</Label>
-                  <Input id="property.city" {...form.register("property.city")} />
+                  <Input
+                    id="property.city"
+                    aria-invalid={Boolean(
+                      form.formState.errors.property?.city,
+                    )}
+                    {...form.register("property.city")}
+                  />
+                  <FieldError
+                    message={form.formState.errors.property?.city?.message}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="property.purchaseDate">Kaufdatum</Label>
@@ -583,36 +753,51 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                   id="property.purchasePrice"
                   label="Kaufpreis"
                   registration={form.register}
+                  error={
+                    form.formState.errors.property?.purchasePrice?.message
+                  }
                 />
                 <MoneyField
                   id="property.acquisitionCosts"
                   label="Kaufnebenkosten"
                   registration={form.register}
+                  error={
+                    form.formState.errors.property?.acquisitionCosts?.message
+                  }
                 />
                 <MoneyField
                   id="property.landValue"
                   label="Grundstücksanteil"
                   registration={form.register}
+                  error={form.formState.errors.property?.landValue?.message}
                 />
                 <MoneyField
                   id="property.buildingValue"
                   label="Gebäudeanteil"
                   registration={form.register}
+                  error={form.formState.errors.property?.buildingValue?.message}
                 />
                 <MoneyField
                   id="property.currentFinancing"
                   label="Aktuelle Finanzierung"
                   registration={form.register}
+                  error={
+                    form.formState.errors.property?.currentFinancing?.message
+                  }
                 />
                 <MoneyField
                   id="property.marketValue"
                   label="Aktueller Marktwert"
                   registration={form.register}
+                  error={form.formState.errors.property?.marketValue?.message}
                 />
                 <MoneyField
                   id="property.expectedMonthlyRent"
                   label="Erwartete Monatsmiete"
                   registration={form.register}
+                  error={
+                    form.formState.errors.property?.expectedMonthlyRent?.message
+                  }
                 />
                 <div className="space-y-2">
                   <Label htmlFor="property.totalArea">Wohnfläche in m²</Label>
@@ -621,22 +806,20 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                     type="number"
                     min="0"
                     step="0.01"
+                    aria-invalid={Boolean(
+                      form.formState.errors.property?.totalArea,
+                    )}
                     {...form.register("property.totalArea", {
                       valueAsNumber: true,
                     })}
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="property.unitCount">Anzahl Einheiten</Label>
-                  <Input
-                    id="property.unitCount"
-                    type="number"
-                    min="1"
-                    max="100"
-                    {...form.register("property.unitCount", {
-                      valueAsNumber: true,
-                    })}
+                  <FieldError
+                    message={form.formState.errors.property?.totalArea?.message}
                   />
+                </div>
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                  Die Anzahl der Einheiten wird im nächsten Schritt automatisch
+                  aus deinen angelegten Einheiten übernommen.
                 </div>
               </div>
             ) : null}
@@ -666,7 +849,16 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                         </Label>
                         <Input
                           id={`units.${index}.unitNumber`}
+                          aria-invalid={Boolean(
+                            form.formState.errors.units?.[index]?.unitNumber,
+                          )}
                           {...form.register(`units.${index}.unitNumber`)}
+                        />
+                        <FieldError
+                          message={
+                            form.formState.errors.units?.[index]?.unitNumber
+                              ?.message
+                          }
                         />
                       </div>
                       <div className="space-y-2">
@@ -685,9 +877,17 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                           type="number"
                           min="0.1"
                           step="0.01"
+                          aria-invalid={Boolean(
+                            form.formState.errors.units?.[index]?.area,
+                          )}
                           {...form.register(`units.${index}.area`, {
                             valueAsNumber: true,
                           })}
+                        />
+                        <FieldError
+                          message={
+                            form.formState.errors.units?.[index]?.area?.message
+                          }
                         />
                       </div>
                       <div className="space-y-2">
@@ -697,37 +897,73 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                           type="number"
                           min="0.5"
                           step="0.5"
+                          aria-invalid={Boolean(
+                            form.formState.errors.units?.[index]?.rooms,
+                          )}
                           {...form.register(`units.${index}.rooms`, {
                             valueAsNumber: true,
                           })}
+                        />
+                        <FieldError
+                          message={
+                            form.formState.errors.units?.[index]?.rooms?.message
+                          }
                         />
                       </div>
                       <MoneyField
                         id={`units.${index}.baseRent`}
                         label="Kaltmiete"
                         registration={form.register}
+                        error={
+                          form.formState.errors.units?.[index]?.baseRent?.message
+                        }
                       />
                       <MoneyField
                         id={`units.${index}.serviceCharge`}
                         label="Nebenkosten"
                         registration={form.register}
+                        error={
+                          form.formState.errors.units?.[index]?.serviceCharge
+                            ?.message
+                        }
                       />
                       <MoneyField
                         id={`units.${index}.parkingRent`}
                         label="Stellplatzmiete"
                         registration={form.register}
+                        error={
+                          form.formState.errors.units?.[index]?.parkingRent
+                            ?.message
+                        }
                       />
                       <div className="space-y-2">
-                        <Label>Mietstatus</Label>
+                        <Label htmlFor={`units.${index}.status`}>
+                          Mietstatus
+                        </Label>
                         <Select
                           value={
                             watchedValues.units?.[index]?.status ?? "occupied"
                           }
                           onValueChange={(
                             value: "occupied" | "vacant" | "renovation",
-                          ) => form.setValue(`units.${index}.status`, value)}
+                          ) => {
+                            form.setValue(`units.${index}.status`, value, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                            if (value !== "occupied") {
+                              form.setValue(
+                                `units.${index}.leaseStart`,
+                                "",
+                                {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                },
+                              );
+                            }
+                          }}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id={`units.${index}.status`}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -737,15 +973,40 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
                           </SelectContent>
                         </Select>
                       </div>
+                      {watchedValues.units?.[index]?.status === "occupied" ? (
+                        <div className="space-y-2">
+                          <Label htmlFor={`units.${index}.leaseStart`}>
+                            Mietbeginn
+                          </Label>
+                          <Input
+                            id={`units.${index}.leaseStart`}
+                            type="date"
+                            required
+                            aria-invalid={Boolean(
+                              form.formState.errors.units?.[index]?.leaseStart,
+                            )}
+                            {...form.register(`units.${index}.leaseStart`)}
+                          />
+                          <FieldError
+                            message={
+                              form.formState.errors.units?.[index]?.leaseStart
+                                ?.message
+                            }
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
                 <Button
                   type="button"
                   variant="outline"
+                  disabled={fields.length >= 100}
                   onClick={() =>
                     append({
-                      unitNumber: `Wohnung ${fields.length + 1}`,
+                      unitNumber: nextOnboardingUnitNumber(
+                        form.getValues("units"),
+                      ),
                       floor: "",
                       area: 50,
                       rooms: 2,
@@ -824,7 +1085,11 @@ export function OnboardingWizard({ fullName }: { fullName: string | null }) {
             Zurück
           </Button>
           {step < steps.length - 1 ? (
-            <Button type="button" onClick={nextStep}>
+            <Button
+              type="button"
+              onClick={nextStep}
+              disabled={pending}
+            >
               Weiter
               <ArrowRight />
             </Button>

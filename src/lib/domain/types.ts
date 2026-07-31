@@ -141,7 +141,7 @@ export interface Invoice {
     | "complete"
     | "missing"
     | "unreadable"
-    | "unclear"
+    | "unclear_assignment"
     | "review_required"
     | "reviewed";
   paymentStatus: "paid" | "open";

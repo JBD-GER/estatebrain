@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 const qaEmail = process.env.E2E_USER_EMAIL;
 const qaPassword = process.env.E2E_USER_PASSWORD;
+const freshUserEmail = process.env.E2E_FRESH_USER_EMAIL;
+const freshUserPassword = process.env.E2E_FRESH_USER_PASSWORD;
 
 test("angemeldeter Eigentümer erreicht Dashboard und Kernmodule", async ({
   page,
@@ -48,4 +50,32 @@ test("angemeldeter Eigentümer erreicht Dashboard und Kernmodule", async ({
       name: "Organisationslöschung vormerken",
     }),
   ).toBeVisible();
+});
+
+test("frisches bestätigtes Konto landet ohne Zwischenseite im Onboarding", async ({
+  page,
+}) => {
+  test.skip(
+    !freshUserEmail || !freshUserPassword,
+    "Ein leeres bestätigtes QA-Konto ist nur im First-Run-Smoke gesetzt.",
+  );
+
+  await page.goto("/login");
+  await page.getByLabel("E-Mail-Adresse").fill(freshUserEmail!);
+  await page.getByLabel("Passwort").fill(freshUserPassword!);
+  await page.getByRole("button", { name: "Anmelden" }).click();
+
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Richten wir dein Portfolio ein",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Schritt 1 von 5")).toBeVisible();
+  await expect(page.getByLabel("Name der Organisation")).toHaveValue("");
+  await expect(
+    page.getByRole("button", { name: "Leer starten" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Abmelden" })).toBeVisible();
 });

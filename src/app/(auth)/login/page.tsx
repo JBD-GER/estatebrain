@@ -1,16 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AlertCircle } from "lucide-react";
 import { AuthForm } from "@/components/auth/auth-form";
 import { loginAction } from "@/app/(auth)/actions";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { loginPageErrorMessage } from "@/lib/auth/errors";
 
 export const metadata: Metadata = { title: "Anmelden" };
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; registered?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
 }) {
   const params = await searchParams;
+  const pageError = loginPageErrorMessage(params.error);
 
   return (
     <div>
@@ -26,6 +30,13 @@ export default async function LoginPage({
           </Link>
         </p>
       </div>
+
+      {pageError ? (
+        <Alert className="mb-5" variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertDescription>{pageError}</AlertDescription>
+        </Alert>
+      ) : null}
 
       <AuthForm
         action={loginAction}

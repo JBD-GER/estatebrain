@@ -16,9 +16,6 @@ export async function GET(request: Request) {
   }
 
   const errorUrl = new URL("/login", url.origin);
-  errorUrl.searchParams.set(
-    "error",
-    "Der Bestätigungslink ist abgelaufen oder ungültig.",
-  );
+  errorUrl.searchParams.set("error", "confirmation_failed");
   return NextResponse.redirect(errorUrl);
 }

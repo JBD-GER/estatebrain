@@ -176,12 +176,15 @@ function EmptyDashboard() {
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Button asChild>
-            <Link href="/app/immobilien">
-              Erste Immobilie anlegen
+            <Link href="/onboarding?resume=1">
+              Geführte Einrichtung fortsetzen
               <ArrowRight />
             </Link>
           </Button>
           <Button asChild variant="outline">
+            <Link href="/app/immobilien">Direkt Immobilie anlegen</Link>
+          </Button>
+          <Button asChild variant="ghost">
             <Link href="/demo">Fiktive Demo ansehen</Link>
           </Button>
         </div>

@@ -1,32 +1,23 @@
 import { AlertCircle, Building2, FileText, MessageSquareText } from "lucide-react";
 import { requireOrganization } from "@/lib/auth/dal";
+import { isCurrentTenantLease } from "@/lib/portal/lease";
 import { fetchAllRows } from "@/lib/supabase/pagination";
 import { createClient } from "@/lib/supabase/server";
 import {
-  createMaintenanceRequestAction,
-  createTenantConversationAction,
-  replyToConversationAction,
-} from "@/app/portal/actions";
+  TenantConversationForm,
+  TenantConversationReplyForm,
+  TenantMaintenanceRequestForm,
+} from "@/components/portal/tenant-portal-forms";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 
 const euro = new Intl.NumberFormat("de-DE", {
   style: "currency",
@@ -125,13 +116,15 @@ export default async function TenantPortalPage() {
     ...new Set(portalContexts.map((context) => context.lease_id)),
   ];
   const today = dateInBerlin();
-  const currentContext =
-    portalContexts.find(
-      (context) =>
-        ["active", "notice_given"].includes(context.lease_status) &&
-        context.lease_starts_on <= today &&
-        (!context.lease_ends_on || context.lease_ends_on >= today),
-    ) ?? portalContexts[0];
+  const currentContext = portalContexts.find((context) =>
+    isCurrentTenantLease(context, today),
+  );
+  const activeLeaseIds = new Set(
+    portalContexts
+      .filter((context) => isCurrentTenantLease(context, today))
+      .map((context) => context.lease_id),
+  );
+  const displayContext = currentContext ?? portalContexts[0];
 
   const [
     claimsResult,
@@ -279,6 +272,17 @@ export default async function TenantPortalPage() {
           </AlertDescription>
         </Alert>
       ) : null}
+      {!currentContext ? (
+        <Alert className="mb-6">
+          <AlertCircle />
+          <AlertTitle>Kein aktuell aktives Mietverhältnis</AlertTitle>
+          <AlertDescription>
+            Historische Zahlungen, Dokumente und Nachrichten bleiben sichtbar.
+            Neue Nachrichten, Antworten und Anliegen kannst du wieder senden,
+            sobald deine Verwaltung ein aktives Mietverhältnis hinterlegt hat.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {hiddenConversationCount > 0 ? (
         <Alert className="mb-6">
           <MessageSquareText />
@@ -297,10 +301,10 @@ export default async function TenantPortalPage() {
             <p className="text-sm text-muted-foreground">Monatliche Gesamtmiete</p>
             <p className="mt-2 text-2xl font-semibold">
               {cents(
-                Number(currentContext.cold_rent_cents ?? 0) +
-                  Number(currentContext.ancillary_prepayment_cents ?? 0) +
-                  Number(currentContext.parking_rent_cents ?? 0) +
-                  Number(currentContext.other_rent_cents ?? 0),
+                Number(displayContext.cold_rent_cents ?? 0) +
+                  Number(displayContext.ancillary_prepayment_cents ?? 0) +
+                  Number(displayContext.parking_rent_cents ?? 0) +
+                  Number(displayContext.other_rent_cents ?? 0),
               )}
             </p>
           </CardContent>
@@ -331,15 +335,15 @@ export default async function TenantPortalPage() {
           <Building2 className="mt-0.5 size-5 text-primary" />
           <div>
             <p className="font-medium">
-              {currentContext.property_name || "Mietobjekt"} ·{" "}
-              {currentContext.unit_number || "Einheit"}
+              {displayContext.property_name || "Mietobjekt"} ·{" "}
+              {displayContext.unit_number || "Einheit"}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               {[
-                currentContext.property_street,
-                currentContext.property_house_number,
-                currentContext.property_postal_code,
-                currentContext.property_city,
+                displayContext.property_street,
+                displayContext.property_house_number,
+                displayContext.property_postal_code,
+                displayContext.property_city,
               ]
                 .filter(Boolean)
                 .join(" ")}
@@ -447,34 +451,14 @@ export default async function TenantPortalPage() {
               <CardTitle className="text-base">Neue Nachricht</CardTitle>
             </CardHeader>
             <CardContent>
-              <form action={createTenantConversationAction} className="grid gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="message-subject">Betreff</Label>
-                  <Input id="message-subject" name="subject" required maxLength={240} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Kategorie</Label>
-                  <Select name="category" defaultValue="general">
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="general">Allgemein</SelectItem>
-                      <SelectItem value="repair">Reparatur</SelectItem>
-                      <SelectItem value="damage">Schaden</SelectItem>
-                      <SelectItem value="utilities">Nebenkosten</SelectItem>
-                      <SelectItem value="payment">Zahlung</SelectItem>
-                      <SelectItem value="document">Dokument</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="message-body">Nachricht</Label>
-                  <Textarea id="message-body" name="body" required rows={4} />
-                </div>
-                <Button type="submit" className="w-fit">
-                  <MessageSquareText />
-                  Nachricht senden
-                </Button>
-              </form>
+              {currentContext ? (
+                <TenantConversationForm />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Ohne aktives Mietverhältnis können keine neuen Nachrichten
+                  gesendet werden.
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -503,20 +487,17 @@ export default async function TenantPortalPage() {
                       {message.body}
                     </div>
                   ))}
-                  <form action={replyToConversationAction} className="flex gap-2">
-                    <input
-                      type="hidden"
-                      name="conversationId"
-                      value={conversation.id}
+                  {conversation.lease_id &&
+                  activeLeaseIds.has(conversation.lease_id) ? (
+                    <TenantConversationReplyForm
+                      conversationId={conversation.id}
                     />
-                    <Input
-                      name="body"
-                      required
-                      minLength={2}
-                      placeholder="Antwort schreiben …"
-                    />
-                    <Button type="submit">Senden</Button>
-                  </form>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Antworten sind nur während des zugehörigen aktiven
+                      Mietverhältnisses möglich.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -529,37 +510,14 @@ export default async function TenantPortalPage() {
               <CardTitle className="text-base">Schaden oder Anliegen melden</CardTitle>
             </CardHeader>
             <CardContent>
-              <form action={createMaintenanceRequestAction} className="grid gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="request-title">Titel</Label>
-                  <Input id="request-title" name="title" required />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Kategorie</Label>
-                  <Select name="category" defaultValue="repair">
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="repair">Reparatur</SelectItem>
-                      <SelectItem value="damage">Schaden</SelectItem>
-                      <SelectItem value="heating">Heizung</SelectItem>
-                      <SelectItem value="water">Wasser</SelectItem>
-                      <SelectItem value="electrical">Elektrik</SelectItem>
-                      <SelectItem value="security">Sicherheit</SelectItem>
-                      <SelectItem value="other">Sonstiges</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="request-description">Beschreibung</Label>
-                  <Textarea
-                    id="request-description"
-                    name="description"
-                    required
-                    rows={5}
-                  />
-                </div>
-                <Button type="submit" className="w-fit">Anliegen absenden</Button>
-              </form>
+              {currentContext ? (
+                <TenantMaintenanceRequestForm />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Ohne aktives Mietverhältnis können keine neuen Anliegen
+                  gemeldet werden.
+                </p>
+              )}
             </CardContent>
           </Card>
           <div className="space-y-3">

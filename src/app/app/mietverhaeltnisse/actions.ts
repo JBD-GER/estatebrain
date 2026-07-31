@@ -9,8 +9,15 @@ import {
   parseTenantLeaseFormData,
   toCreateTenantLeasePayload,
 } from "@/lib/validation/tenant-lease";
+import { parseManualRentPaymentFormData } from "@/lib/validation/rent-payment";
 
 export type CreateTenantLeaseState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  errors?: Record<string, string[]>;
+};
+
+export type ManualRentPaymentState = {
   status: "idle" | "success" | "error";
   message?: string;
   errors?: Record<string, string[]>;
@@ -110,5 +117,78 @@ export async function createTenantLeaseAction(
     status: "success",
     message:
       "Mieter, Mietvertrag und erster Mietplan wurden vollständig angelegt.",
+  };
+}
+
+export async function recordManualRentPaymentAction(
+  _state: ManualRentPaymentState,
+  formData: FormData,
+): Promise<ManualRentPaymentState> {
+  const viewer = await requireOrganization();
+  if (!hasPermission(viewer.role, "bookkeeping.write")) {
+    return {
+      status: "error",
+      message: "Deine Rolle darf keine Mietzahlungen verbuchen.",
+    };
+  }
+
+  const parsed = parseManualRentPaymentFormData(formData);
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Bitte prüfe die markierten Zahlungsdaten.",
+      errors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: claim, error: claimError } = await supabase
+    .from("rent_claims")
+    .select("id, status")
+    .eq("id", parsed.data.rentClaimId)
+    .eq("organization_id", viewer.organizationId)
+    .maybeSingle();
+
+  if (claimError || !claim) {
+    return {
+      status: "error",
+      message:
+        "Die Sollstellung ist nicht mehr verfügbar. Bitte aktualisiere die Seite.",
+    };
+  }
+  if (!["open", "partial"].includes(claim.status)) {
+    return {
+      status: "error",
+      message:
+        "Diese Sollstellung ist bereits ausgeglichen oder wurde storniert.",
+    };
+  }
+
+  const { error } = await supabase.from("rent_payments").insert({
+    organization_id: viewer.organizationId,
+    rent_claim_id: claim.id,
+    paid_on: parsed.data.paidOn,
+    amount_cents: parsed.data.amountCents,
+    allocation_status: "confirmed",
+    notes: parsed.data.notes,
+    created_by: viewer.userId,
+  });
+
+  if (error) {
+    return {
+      status: "error",
+      message:
+        error.code === "23514" || error.code === "P0002"
+          ? "Die Sollstellung wurde zwischenzeitlich ausgeglichen oder storniert. Bitte aktualisiere die Seite."
+          : "Die Mietzahlung konnte nicht verbucht werden. Es wurden keine Zahlungsstände verändert.",
+    };
+  }
+
+  revalidatePath("/app/mietverhaeltnisse");
+  revalidatePath("/app");
+  return {
+    status: "success",
+    message:
+      "Die Mietzahlung wurde verbucht und der Status der Sollstellung aktualisiert.",
   };
 }

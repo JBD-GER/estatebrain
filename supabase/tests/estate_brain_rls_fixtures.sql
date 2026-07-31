@@ -416,6 +416,119 @@ begin
 end
 $test$;
 
+do $valuation_projection_fixture$
+begin
+  perform public.create_valuation(
+    '20000000-0000-0000-0000-000000000001',
+    '40000000-0000-0000-0000-000000000001',
+    date '2025-12-31',
+    10000000,
+    'manual',
+    'Fixture valuation 2025'
+  );
+
+  perform public.create_valuation(
+    '20000000-0000-0000-0000-000000000001',
+    '40000000-0000-0000-0000-000000000001',
+    date '2026-06-30',
+    12000000,
+    'appraisal',
+    'Fixture valuation 2026'
+  );
+
+  -- A historical value belongs in the timeline but must not replace the
+  -- current KPI projection.
+  perform public.create_valuation(
+    '20000000-0000-0000-0000-000000000001',
+    '40000000-0000-0000-0000-000000000001',
+    date '2024-12-31',
+    9000000,
+    'manual',
+    'Backdated fixture valuation'
+  );
+
+  if (
+    select count(*)
+      from public.valuations
+     where property_id = '40000000-0000-0000-0000-000000000001'
+  ) <> 3
+     or (
+       select current_market_value_cents
+         from public.properties
+        where id = '40000000-0000-0000-0000-000000000001'
+     ) <> 12000000 then
+    raise exception 'Valuation history and property KPI projection diverged';
+  end if;
+
+  insert into public.valuations (
+    id,
+    organization_id,
+    property_id,
+    valued_on,
+    market_value_cents,
+    source_type,
+    source_name,
+    created_by
+  )
+  values (
+    '8d000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    '40000000-0000-0000-0000-000000000001',
+    date '2026-12-31',
+    13000000,
+    'manual',
+    'Direct projection fixture',
+    '10000000-0000-0000-0000-000000000001'
+  );
+
+  update public.valuations
+     set market_value_cents = 14000000
+   where id = '8d000000-0000-0000-0000-000000000001';
+
+  if (
+    select current_market_value_cents
+      from public.properties
+     where id = '40000000-0000-0000-0000-000000000001'
+  ) <> 14000000 then
+    raise exception 'Direct valuation mutation did not refresh projection';
+  end if;
+
+  begin
+    update public.properties
+       set current_market_value_cents = 1
+     where id = '40000000-0000-0000-0000-000000000001';
+    raise exception 'Property market-value projection was directly forged';
+  exception
+    when check_violation then null;
+  end;
+
+  delete from public.valuations
+   where id = '8d000000-0000-0000-0000-000000000001';
+
+  if (
+    select current_market_value_cents
+      from public.properties
+     where id = '40000000-0000-0000-0000-000000000001'
+  ) <> 12000000 then
+    raise exception 'Valuation deletion did not restore latest projection';
+  end if;
+
+  begin
+    perform public.create_valuation(
+      '20000000-0000-0000-0000-000000000002',
+      '40000000-0000-0000-0000-000000000002',
+      date '2026-06-30',
+      99900000,
+      'manual',
+      'Forbidden cross-organization valuation'
+    );
+    raise exception 'Cross-organization valuation was accepted';
+  exception
+    when no_data_found then null;
+  end;
+end
+$valuation_projection_fixture$;
+
 reset role;
 
 -- Tenant can read their own portal scope, not properties or internal notes.
@@ -495,7 +608,185 @@ begin
 end
 $test$;
 
+do $tenant_portal_atomicity_fixture$
+declare
+  v_conversation_id uuid;
+  v_request_id uuid;
+begin
+  begin
+    insert into public.conversations (
+      organization_id,
+      property_id,
+      unit_id,
+      lease_id,
+      subject,
+      is_internal,
+      created_by
+    )
+    values (
+      '20000000-0000-0000-0000-000000000001',
+      '40000000-0000-0000-0000-000000000001',
+      '50000000-0000-0000-0000-000000000001',
+      '70000000-0000-0000-0000-000000000001',
+      'Unzulässige direkte Unterhaltung',
+      false,
+      '10000000-0000-0000-0000-000000000003'
+    );
+    raise exception 'Tenant directly created a conversation';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  v_conversation_id := public.create_tenant_portal_conversation(
+    '20000000-0000-0000-0000-000000000001',
+    '70000000-0000-0000-0000-000000000001',
+    'Atomare Unterhaltung',
+    'general',
+    'Erste atomare Nachricht'
+  );
+
+  if (
+    select count(*)
+      from public.conversation_participants
+     where conversation_id = v_conversation_id
+  ) <> 1
+     or (
+       select count(*)
+         from public.messages
+        where conversation_id = v_conversation_id
+     ) <> 1 then
+    raise exception 'Tenant conversation RPC did not create its linked rows';
+  end if;
+
+  begin
+    insert into public.messages (
+      organization_id,
+      conversation_id,
+      author_tenant_id,
+      body,
+      is_internal_note,
+      created_by
+    )
+    values (
+      '20000000-0000-0000-0000-000000000001',
+      v_conversation_id,
+      '60000000-0000-0000-0000-000000000001',
+      'Unzulässige direkte Antwort',
+      false,
+      '10000000-0000-0000-0000-000000000003'
+    );
+    raise exception 'Tenant directly inserted a message';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  perform public.reply_tenant_portal_conversation(
+    '20000000-0000-0000-0000-000000000001',
+    v_conversation_id,
+    'Atomare Antwort'
+  );
+
+  if (
+    select count(*)
+      from public.messages
+     where conversation_id = v_conversation_id
+  ) <> 2
+     or (
+       select status
+         from public.conversations
+        where id = v_conversation_id
+     ) <> 'waiting_team' then
+    raise exception 'Tenant reply RPC did not update atomically';
+  end if;
+
+  begin
+    insert into public.maintenance_requests (
+      organization_id,
+      property_id,
+      unit_id,
+      lease_id,
+      tenant_id,
+      title,
+      description,
+      created_by
+    )
+    values (
+      '20000000-0000-0000-0000-000000000001',
+      '40000000-0000-0000-0000-000000000001',
+      '50000000-0000-0000-0000-000000000001',
+      '70000000-0000-0000-0000-000000000001',
+      '60000000-0000-0000-0000-000000000001',
+      'Unzulässiges direktes Anliegen',
+      'Dieses Anliegen darf nicht ohne Aufgabe entstehen.',
+      '10000000-0000-0000-0000-000000000003'
+    );
+    raise exception 'Tenant directly created a maintenance request';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  v_request_id := public.create_tenant_portal_maintenance_request(
+    '20000000-0000-0000-0000-000000000001',
+    '70000000-0000-0000-0000-000000000001',
+    'Atomares Anliegen',
+    'Dieses Anliegen erzeugt seine Aufgabe gemeinsam.',
+    'repair'
+  );
+
+  perform set_config(
+    'estate_brain.tenant_portal_request_id',
+    v_request_id::text,
+    true
+  );
+end
+$tenant_portal_atomicity_fixture$;
+
 reset role;
+
+do $tenant_portal_task_fixture$
+begin
+  if (
+    select count(*)
+      from public.tasks
+     where maintenance_request_id =
+       current_setting('estate_brain.tenant_portal_request_id')::uuid
+  ) <> 1 then
+    raise exception 'Tenant maintenance RPC omitted its linked staff task';
+  end if;
+end
+$tenant_portal_task_fixture$;
+
+update public.lease_tenants
+   set occupancy_ends_on = current_date - 1
+ where lease_id = '70000000-0000-0000-0000-000000000001'
+   and tenant_id = '60000000-0000-0000-0000-000000000001';
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated"}',
+  true
+);
+
+do $tenant_portal_history_fixture$
+begin
+  if (
+    select count(*)
+      from public.get_tenant_portal_context(
+        '20000000-0000-0000-0000-000000000001'
+      )
+  ) <> 1 then
+    raise exception 'Tenant portal hides completed occupancy history';
+  end if;
+end
+$tenant_portal_history_fixture$;
+
+reset role;
+
+update public.lease_tenants
+   set occupancy_ends_on = null
+ where lease_id = '70000000-0000-0000-0000-000000000001'
+   and tenant_id = '60000000-0000-0000-0000-000000000001';
 
 -- A restricted employee sees no property until explicitly assigned.
 set local role authenticated;
@@ -1535,6 +1826,102 @@ begin
   end if;
 end
 $tenant_author_redaction_fixture$;
+
+-- A cancelled historical claim must protect direct payment edits without
+-- blocking the explicit organization-wide cascade workflow.
+insert into public.units (
+  id,
+  organization_id,
+  property_id,
+  unit_number,
+  area_sqm,
+  rooms,
+  status,
+  created_by
+)
+values (
+  '5f000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000001',
+  '40000000-0000-0000-0000-000000000001',
+  'Cascade-Zahlung',
+  40,
+  1,
+  'rented',
+  '10000000-0000-0000-0000-000000000001'
+);
+
+insert into public.leases (
+  id,
+  organization_id,
+  unit_id,
+  starts_on,
+  cold_rent_cents,
+  status,
+  created_by
+)
+values (
+  '7f000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000001',
+  '5f000000-0000-0000-0000-000000000001',
+  date '2025-01-01',
+  50000,
+  'ended',
+  '10000000-0000-0000-0000-000000000001'
+);
+
+insert into public.rent_claims (
+  id,
+  organization_id,
+  lease_id,
+  claim_month,
+  due_date,
+  cold_rent_cents,
+  created_by
+)
+values (
+  '8f000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000001',
+  '7f000000-0000-0000-0000-000000000001',
+  date '2025-01-01',
+  date '2025-01-03',
+  50000,
+  '10000000-0000-0000-0000-000000000001'
+);
+
+insert into public.rent_payments (
+  id,
+  organization_id,
+  rent_claim_id,
+  paid_on,
+  amount_cents,
+  allocation_status,
+  created_by
+)
+values (
+  '8e000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-000000000001',
+  '8f000000-0000-0000-0000-000000000001',
+  date '2025-01-03',
+  50000,
+  'confirmed',
+  '10000000-0000-0000-0000-000000000001'
+);
+
+update public.rent_claims
+   set status = 'cancelled'
+ where id = '8f000000-0000-0000-0000-000000000001';
+
+do $cancelled_claim_payment_fixture$
+begin
+  begin
+    delete from public.rent_payments
+     where id = '8e000000-0000-0000-0000-000000000001';
+    raise exception 'Cancelled-claim payment was directly deleted';
+  exception
+    when check_violation then null;
+  end;
+end
+$cancelled_claim_payment_fixture$;
 
 -- Keep a second tenant author linked until the organization itself is
 -- deleted. This exercises nested organization -> tenant -> SET NULL actions

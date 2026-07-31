@@ -17,6 +17,10 @@ export type RelationOptions = {
   tenants: Array<{ label: string; value: string }>;
 };
 
+export type RelationLoadErrors = Partial<
+  Record<keyof RelationOptions, true>
+>;
+
 function asText(value: unknown) {
   return typeof value === "string" ? value : "";
 }
@@ -108,6 +112,7 @@ export async function getModulePageData(slug: string) {
         units: [],
         tenants: [],
       } satisfies RelationOptions,
+      relationErrors: {} satisfies RelationLoadErrors,
       error: null,
       forbidden: true,
       canCreate: false,
@@ -134,10 +139,10 @@ export async function getModulePageData(slug: string) {
   }
 
   const [
-    { data: rawRows, error },
-    { data: properties },
-    { data: units },
-    { data: tenants },
+    { data: rawRows, error: rowsError },
+    { data: properties, error: propertiesError },
+    { data: units, error: unitsError },
+    { data: tenants, error: tenantsError },
   ] = await Promise.all([
     query.order("created_at", { ascending: false }).limit(100),
     plan.relationOptions.has("properties")
@@ -146,22 +151,28 @@ export async function getModulePageData(slug: string) {
           .select("id, name")
           .eq("organization_id", viewer.organizationId)
           .order("name")
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     plan.relationOptions.has("units")
       ? supabase
           .from("units")
           .select("id, unit_number, property_id")
           .eq("organization_id", viewer.organizationId)
           .order("unit_number")
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     plan.relationOptions.has("tenants")
       ? supabase
           .from("tenants")
           .select("id, first_name, last_name")
           .eq("organization_id", viewer.organizationId)
           .order("last_name")
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
   ]);
+
+  const relationErrors: RelationLoadErrors = {
+    ...(propertiesError ? { properties: true } : {}),
+    ...(unitsError ? { units: true } : {}),
+    ...(tenantsError ? { tenants: true } : {}),
+  };
 
   const propertyOptions = (properties ?? []).map((property) => ({
     value: String(property.id),
@@ -267,7 +278,13 @@ export async function getModulePageData(slug: string) {
       units: unitOptions,
       tenants: tenantOptions,
     } satisfies RelationOptions,
-    error: error?.message ?? null,
+    relationErrors,
+    error:
+      rowsError?.message ??
+      propertiesError?.message ??
+      unitsError?.message ??
+      tenantsError?.message ??
+      null,
     forbidden: false,
     canCreate,
     viewer,

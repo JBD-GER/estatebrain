@@ -227,9 +227,19 @@ export async function createModuleRecordAction(
   };
   const supabase = await createClient();
   const dynamicSupabase = supabase as unknown as SupabaseClient;
-  const { error } = await dynamicSupabase
-    .from(definition.table)
-    .insert(payload as never);
+  const { error } =
+    slug === "markt"
+      ? await supabase.rpc("create_valuation", {
+          p_organization_id: viewer.organizationId,
+          p_property_id: String(parsedValues.property_id),
+          p_valued_on: String(parsedValues.valued_on),
+          p_market_value_cents: Number(parsedValues.market_value_cents),
+          p_source_type: String(parsedValues.source_type),
+          p_source_name: String(parsedValues.source_name),
+        })
+      : await dynamicSupabase
+          .from(definition.table)
+          .insert(payload as never);
 
   if (error) {
     return {
