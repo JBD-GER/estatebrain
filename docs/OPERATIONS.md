@@ -1,0 +1,135 @@
+# Betrieb und Releases
+
+## Release-Ablauf
+
+Ein Release gilt erst als bereit, wenn Anwendung, Schema und Umgebung gemeinsam geprüft wurden.
+
+1. `npm ci` in einem sauberen Checkout ausführen.
+2. `npm run check` erfolgreich abschließen.
+3. Neue Supabase-Migrationen mit `npx supabase db push --dry-run` prüfen.
+4. Datenbank-Backup beziehungsweise Point-in-Time-Recovery des Zielprojekts kontrollieren.
+5. Migrationen anwenden und Supabase Security sowie Performance Advisor prüfen.
+6. Vercel-Umgebungsvariablen für das Ziel-Environment kontrollieren.
+7. Vercel-Deployment auslösen.
+8. Produktions-Smoke-Checks durchführen.
+
+Die GitHub-Actions-Pipeline verwendet Node.js 24 und führt Installation, Typecheck, Lint, Unit-Tests und Produktions-Build aus. Ein Merge nach `main` sollte nur bei grüner Pipeline erfolgen.
+
+## Umgebungen
+
+Vercel-Variablen werden getrennt für Development, Preview und Production gepflegt. Mindestens erforderlich sind:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_APP_URL`
+
+Provider- und Wartungsvariablen werden nur gesetzt, wenn die Integration aktiv ist:
+
+- `SUPABASE_SECRET_KEY`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `OPEN_BANKING_PROVIDER`
+- `OPEN_BANKING_CLIENT_ID`
+- `OPEN_BANKING_CLIENT_SECRET`
+- `OCR_PROVIDER`
+- `OCR_API_KEY`
+- `MARKET_DATA_PROVIDER`
+- `MARKET_DATA_API_KEY`
+- `GEOCODING_API_KEY`
+- `INTEGRATION_ENCRYPTION_KEY`
+- `CRON_SECRET`
+
+Secrets gehören weder in Git noch in Build-Logs. Werte werden in Vercel und Supabase direkt gepflegt und regelmäßig rotiert.
+
+## Supabase-Migrationen
+
+Remote-Projekt verbinden:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <projekt-ref>
+```
+
+Änderungen vorab prüfen und anschließend anwenden:
+
+```bash
+npx supabase db push --dry-run
+npx supabase db push
+```
+
+Regeln:
+
+- Bereits remote angewendete Migrationen nicht verändern.
+- Jede Schemaänderung als neue, zeitgestempelte Migration anlegen.
+- Tabellen immer mit expliziten Grants, RLS-Policies, Constraints und relevanten Indizes veröffentlichen.
+- Datenmigrationen wiederholbar oder durch eindeutige Vorbedingungen absichern.
+- Löschende oder irreversibel transformierende Änderungen separat sichern und in einer Preview-Umgebung testen.
+- Nach dem Rollout Tabellenzugriff für mindestens zwei Organisationen und jede betroffene Rolle gegenprüfen.
+
+Lokale Neuinitialisierung:
+
+```bash
+npx supabase start
+npx supabase db reset --local --no-seed
+```
+
+Die Demo wird durch die Anwendung beziehungsweise eine autorisierte Datenbankfunktion erzeugt; es gibt keinen automatischen Produktions-Seed.
+
+## Supabase Auth
+
+Für jede produktive oder geteilte Preview-Umgebung müssen die erlaubten Auth-Redirects im Supabase-Dashboard gepflegt sein. Dazu gehören mindestens:
+
+- `<app-url>/auth/callback`
+- `<app-url>/auth/confirm`
+- die verwendeten Passwort-Reset- und Einladungsziele
+
+Offene Wildcards nur für bewusst kontrollierte Preview-Domains verwenden. Nach Domainänderungen Registrierung, Login, E-Mail-Bestätigung, Passwort-Reset und Einladung erneut testen.
+
+## Produktions-Smoke-Checks
+
+Nach jedem Release:
+
+- `/`, `/impressum`, `/datenschutz` und `/nutzungsbedingungen` laden
+- `/demo` zeigt ausschließlich klar markierte fiktive Daten
+- Registrierung, Login, Logout und Passwort-Reset funktionieren
+- neuer Benutzer durchläuft das Onboarding
+- Organisationswechsel zeigt keine Daten eines anderen Mandanten
+- berechtigter Benutzer kann Immobilie, Einheit, Einnahme und Ausgabe erfassen
+- unberechtigte Rolle erhält keinen Schreibzugriff
+- Dokument-Upload validiert Dateityp und Größe
+- Dokument-Download erfordert Zugriff und liefert nur eine kurzlebige URL
+- Suche und CSV-Export geben ausschließlich Organisationsdaten aus
+- Mieter sieht im Portal nur eigene Daten
+- Dashboard lädt ohne Server- oder Browserfehler
+
+Bei aktivierten Integrationen zusätzlich den echten Provider-Healthcheck und einen kontrollierten End-to-End-Test ausführen.
+
+## Beobachtung und Fehleranalyse
+
+Bei einem Fehler zuerst eingrenzen, ob er im Browser, in einer Vercel Function, in Supabase Auth, PostgreSQL oder Storage entsteht.
+
+- Vercel Deployment- und Runtime-Logs auf Request-ID, Route und Status prüfen.
+- Supabase Auth-, Postgres- und Storage-Logs im gleichen Zeitfenster prüfen.
+- Security Advisor nach neuen RLS-, Grant- oder Function-Hinweisen kontrollieren.
+- Performance Advisor und langsame Queries prüfen, bevor Limits erhöht werden.
+- Keine sensitiven Formulardaten, Tokens, Dokumentinhalte oder Provider-Secrets in Tickets kopieren.
+
+## Rücknahme
+
+Bei reinem Anwendungscode kann auf das letzte bekannte gute Vercel-Deployment zurückgerollt werden. Datenbankmigrationen werden nicht blind rückwärts ausgeführt. Bei Schema- oder Datenfehlern:
+
+1. Schreibzugriffe auf den betroffenen Ablauf begrenzen.
+2. Auswirkung und betroffene Organisationen bestimmen.
+3. Forward-Fix als neue Migration bevorzugen.
+4. Für Datenwiederherstellung Backup oder Point-in-Time-Recovery in eine getrennte Instanz einspielen und Ergebnis prüfen.
+5. Erst danach Produktionsdaten gezielt wiederherstellen.
+
+## Regelmäßige Aufgaben
+
+- Abhängigkeiten und Sicherheitsmeldungen prüfen
+- RLS- und Rollenregressionstests nach Berechtigungsänderungen ausführen
+- inaktive Einladungen, Integrationen und Sessions kontrollieren
+- Storage-Wachstum und fehlgeschlagene Uploads beobachten
+- Datenbankgröße, Indizes und langsame Queries überwachen
+- Provider-Secrets und Verschlüsselungsschlüssel nach internem Rotationsplan erneuern
+- rechtliche Vorlagen und steuerliche Hinweise fachlich aktuell halten
