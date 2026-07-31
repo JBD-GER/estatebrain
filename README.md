@@ -40,7 +40,7 @@ Für Details zu Datenfluss und Sicherheitsgrenzen siehe [docs/ARCHITECTURE.md](d
 
 ## Voraussetzungen
 
-- Node.js 24 empfohlen; mindestens Node.js 22
+- Node.js 24
 - npm
 - ein Supabase-Projekt oder Docker für die lokale Supabase-Umgebung
 - optional: Supabase CLI Login für Remote-Migrationen
