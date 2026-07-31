@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canAccessModule,
   canCreateModuleRecord,
+  canRequestOrganizationDeletion,
   hasPermission,
 } from "@/lib/auth/permissions";
 import { getModuleDefinition } from "@/lib/modules";
@@ -35,6 +36,13 @@ describe("organization role contract", () => {
     expect(hasPermission("property_manager", "organization.manage")).toBe(
       false,
     );
+  });
+
+  it("reserves organization deletion preparation for the owner", () => {
+    expect(canRequestOrganizationDeletion("owner")).toBe(true);
+    expect(canRequestOrganizationDeletion("admin")).toBe(false);
+    expect(canRequestOrganizationDeletion("property_manager")).toBe(false);
+    expect(canRequestOrganizationDeletion("accounting")).toBe(false);
   });
 });
 

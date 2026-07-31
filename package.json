@@ -14,7 +14,7 @@
     "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": "24.x"
   },
   "overrides": {
     "brace-expansion": "5.0.9",

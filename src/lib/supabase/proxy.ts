@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig } from "@/lib/supabase/config";
 import type { Database } from "@/types/database";
 
-const protectedPrefixes = ["/app", "/portal", "/onboarding"];
+const protectedPrefixes = ["/app", "/portal", "/onboarding", "/konto"];
 const authPrefixes = [
   "/login",
   "/registrieren",

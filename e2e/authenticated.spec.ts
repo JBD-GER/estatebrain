@@ -26,10 +26,26 @@ test("angemeldeter Eigentümer erreicht Dashboard und Kernmodule", async ({
     "/app/belege",
     "/app/kommunikation",
     "/app/berichte",
+    "/app/einstellungen",
   ]) {
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(`${path}$`));
     await expect(page.locator("main h1")).toBeVisible();
     await expect(page.getByText("Application error")).toHaveCount(0);
   }
+
+  await expect(
+    page.getByRole("navigation", { name: "Einstellungsbereiche" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Kontolöschung" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Löschvorbereitung speichern" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Organisationslöschung vormerken",
+    }),
+  ).toBeVisible();
 });

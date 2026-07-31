@@ -14,8 +14,8 @@ begin
    where n.nspname = 'public'
      and c.relkind in ('r', 'p');
 
-  if v_count <> 49 then
-    raise exception 'Expected 49 Estate Brain public tables, found %', v_count;
+  if v_count <> 50 then
+    raise exception 'Expected 50 Estate Brain public tables, found %', v_count;
   end if;
 
   select count(*)
@@ -99,6 +99,46 @@ begin
     raise exception 'authenticated unexpectedly has audit log mutation privileges';
   end if;
 
+  if has_table_privilege(
+       'authenticated',
+       'public.organizations',
+       'DELETE'
+     )
+     or has_table_privilege(
+       'anon',
+       'public.organization_deletion_requests',
+       'SELECT'
+     )
+     or not has_table_privilege(
+       'authenticated',
+       'public.organization_deletion_requests',
+       'SELECT'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.organization_deletion_requests',
+       'INSERT'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.organization_deletion_requests',
+       'UPDATE'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.organization_deletion_requests',
+       'DELETE'
+     )
+     or exists (
+       select 1
+       from pg_catalog.pg_policies
+       where schemaname = 'public'
+         and tablename = 'organizations'
+         and cmd = 'DELETE'
+     ) then
+    raise exception 'Browser-facing organization deletion privileges remain';
+  end if;
+
   if has_function_privilege('anon', 'public.accept_invitation(text)', 'EXECUTE')
      or not has_function_privilege(
        'authenticated',
@@ -129,6 +169,29 @@ begin
        'EXECUTE'
      ) then
     raise exception 'Unexpected onboarding or tenant portal RPC privileges';
+  end if;
+
+  if has_function_privilege(
+       'anon',
+       'public.request_organization_deletion(uuid,text)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'authenticated',
+       'public.request_organization_deletion(uuid,text)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'public.cancel_organization_deletion(uuid,uuid)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'authenticated',
+       'public.cancel_organization_deletion(uuid,uuid)',
+       'EXECUTE'
+     ) then
+    raise exception 'Unexpected organization deletion workflow privileges';
   end if;
 
   if exists (
@@ -199,6 +262,197 @@ begin
 
   select count(*)
     into v_count
+    from pg_catalog.pg_constraint as constraint_row
+   where constraint_row.conrelid = 'public.audit_logs'::regclass
+     and constraint_row.conname in (
+       'audit_logs_organization_id_fkey',
+       'audit_logs_actor_user_id_fkey'
+     )
+     and constraint_row.confdeltype = 'n';
+
+  if v_count <> 2 then
+    raise exception 'Audit identity FKs must retain ON DELETE SET NULL';
+  end if;
+
+  if has_function_privilege(
+       'anon',
+       'private.is_audit_fk_set_null(jsonb,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.is_audit_fk_set_null(jsonb,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'service_role',
+       'private.is_audit_fk_set_null(jsonb,jsonb)',
+       'EXECUTE'
+  ) then
+    raise exception 'Audit FK redaction predicate is externally executable';
+  end if;
+
+  if has_function_privilege(
+       'anon',
+       'private.is_deleted_auth_fk_set_null(jsonb,jsonb,text[])',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.is_deleted_auth_fk_set_null(jsonb,jsonb,text[])',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'service_role',
+       'private.is_deleted_auth_fk_set_null(jsonb,jsonb,text[])',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'private.is_snapshot_parent_cascade_delete(jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.is_snapshot_parent_cascade_delete(jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'service_role',
+       'private.is_snapshot_parent_cascade_delete(jsonb)',
+       'EXECUTE'
+  ) then
+    raise exception 'Deletion-contract predicates are externally executable';
+  end if;
+
+  if has_function_privilege(
+       'anon',
+       'private.is_exact_fk_set_null(oid,jsonb,jsonb,text[])',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.is_exact_fk_set_null(oid,jsonb,jsonb,text[])',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'service_role',
+       'private.is_exact_fk_set_null(oid,jsonb,jsonb,text[])',
+       'EXECUTE'
+  ) then
+    raise exception 'Generic FK redaction predicate is externally executable';
+  end if;
+
+  if has_function_privilege(
+       'anon',
+       'private.is_document_parent_fk_set_null(jsonb,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.is_document_parent_fk_set_null(jsonb,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'service_role',
+       'private.is_document_parent_fk_set_null(jsonb,jsonb)',
+       'EXECUTE'
+     ) then
+    raise exception 'Document FK redaction predicate is externally executable';
+  end if;
+
+  select count(*)
+    into v_count
+    from pg_catalog.pg_class as relation
+    join pg_catalog.pg_namespace as namespace
+      on namespace.oid = relation.relnamespace
+   where namespace.nspname = 'public'
+     and relation.relkind in ('r', 'p')
+     and exists (
+       select 1
+       from pg_catalog.pg_attribute as attribute
+       where attribute.attrelid = relation.oid
+         and attribute.attname = 'created_by'
+         and not attribute.attisdropped
+     )
+     and not exists (
+       select 1
+       from pg_catalog.pg_trigger as trigger_row
+       where trigger_row.tgrelid = relation.oid
+         and not trigger_row.tgisinternal
+         and trigger_row.tgname = relation.relname || '_created_by'
+         and trigger_row.tgenabled <> 'D'
+     );
+
+  if v_count <> 0 then
+    raise exception '% created_by columns lack immutable attribution guards',
+      v_count;
+  end if;
+
+  select count(*)
+    into v_count
+    from pg_catalog.pg_trigger as trigger_row
+   where trigger_row.tgrelid in (
+       'public.messages'::regclass,
+       'public.comments'::regclass
+     )
+     and not trigger_row.tgisinternal
+     and trigger_row.tgenabled <> 'D'
+     and trigger_row.tgname in (
+       'messages_author_identity',
+       'comments_author_identity'
+     );
+
+  if v_count <> 2 then
+    raise exception 'Retained author identity guards are incomplete';
+  end if;
+
+  select count(*)
+    into v_count
+    from pg_catalog.pg_trigger as trigger_row
+   where not trigger_row.tgisinternal
+     and trigger_row.tgenabled <> 'D'
+     and trigger_row.tgname in (
+       'invitations_acceptance_actor',
+       'transaction_matches_confirmation_actor',
+       'transaction_matches_rejection_actor',
+       'tax_years_lock_actor',
+       'optimization_insights_dismissal_actor',
+       'organization_deletion_requests_cancellation_actor'
+     );
+
+  if v_count <> 6 then
+    raise exception 'Action actor guards are incomplete';
+  end if;
+
+  select count(*)
+    into v_count
+    from pg_catalog.pg_trigger as trigger_row
+   where trigger_row.tgrelid = 'public.invitations'::regclass
+     and not trigger_row.tgisinternal
+     and trigger_row.tgenabled <> 'D'
+     and trigger_row.tgname = 'invitations_invited_by_attribution';
+
+  if v_count <> 1 then
+    raise exception 'Invitation attribution guard is missing';
+  end if;
+
+  select count(*)
+    into v_count
+    from pg_catalog.pg_trigger as trigger_row
+   where trigger_row.tgrelid =
+       'public.organization_deletion_requests'::regclass
+     and not trigger_row.tgisinternal
+     and trigger_row.tgenabled <> 'D'
+     and trigger_row.tgname =
+       'organization_deletion_requests_requester';
+
+  if v_count <> 1 then
+    raise exception 'Organization deletion requester guard is missing';
+  end if;
+
+  select count(*)
+    into v_count
     from pg_catalog.pg_trigger as t
     join pg_catalog.pg_class as c on c.oid = t.tgrelid
     join pg_catalog.pg_namespace as n on n.oid = c.relnamespace
@@ -206,7 +460,7 @@ begin
      and n.nspname = 'public'
      and t.tgname like '%_audit';
 
-  if v_count < 14 then
+  if v_count < 15 then
     raise exception 'Critical audit triggers are incomplete: %', v_count;
   end if;
 

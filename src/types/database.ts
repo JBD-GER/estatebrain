@@ -1488,7 +1488,7 @@ export type Database = {
           email: string
           expires_at: string
           id: string
-          invited_by: string
+          invited_by: string | null
           organization_id: string
           property_restricted: boolean
           role: Database["public"]["Enums"]["app_role"]
@@ -1505,7 +1505,7 @@ export type Database = {
           email: string
           expires_at: string
           id?: string
-          invited_by: string
+          invited_by?: string | null
           organization_id: string
           property_restricted?: boolean
           role: Database["public"]["Enums"]["app_role"]
@@ -1522,7 +1522,7 @@ export type Database = {
           email?: string
           expires_at?: string
           id?: string
-          invited_by?: string
+          invited_by?: string | null
           organization_id?: string
           property_restricted?: boolean
           role?: Database["public"]["Enums"]["app_role"]
@@ -2394,6 +2394,53 @@ export type Database = {
             columns: ["unit_id"]
             isOneToOne: false
             referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_deletion_requests: {
+        Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          organization_id: string
+          requested_at: string
+          requested_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id: string
+          requested_at?: string
+          requested_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id?: string
+          requested_at?: string
+          requested_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_deletion_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3955,6 +4002,13 @@ export type Database = {
     }
     Functions: {
       accept_invitation: { Args: { raw_token: string }; Returns: string }
+      cancel_organization_deletion: {
+        Args: {
+          p_organization_id: string
+          p_request_id: string
+        }
+        Returns: boolean
+      }
       complete_onboarding: { Args: { p_payload: Json }; Returns: string }
       confirm_transaction_match: {
         Args: { p_match_id: string }
@@ -4017,6 +4071,13 @@ export type Database = {
           p_conversation_id: string
           p_internal_note?: boolean
           p_organization_id: string
+        }
+        Returns: string
+      }
+      request_organization_deletion: {
+        Args: {
+          p_organization_id: string
+          p_organization_name: string
         }
         Returns: string
       }

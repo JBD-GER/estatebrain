@@ -112,6 +112,15 @@ export function hasPermission(
   return permissionsByRole[role].includes(permission);
 }
 
+/**
+ * Deleting an organization affects every member and all retained records.
+ * Preparation of that operation is therefore reserved for the active owner,
+ * matching the database's owner-only request workflow.
+ */
+export function canRequestOrganizationDeletion(role: OrganizationRole) {
+  return role === "owner";
+}
+
 const moduleReadPermissions = {
   portfolio: "portfolio.read",
   immobilien: "portfolio.read",

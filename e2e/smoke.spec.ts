@@ -38,6 +38,15 @@ test("geschütztes Dashboard leitet zur Anmeldung weiter", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("persönliche Kontoeinstellungen sind ohne Sitzung geschützt", async ({
+  page,
+}) => {
+  await page.goto("/konto/einstellungen");
+  await expect(page).toHaveURL(
+    /\/login\?next=%2Fkonto%2Feinstellungen$/,
+  );
+});
+
 test("Login bietet alle Wiederherstellungswege", async ({ page }) => {
   await page.goto("/login");
   await expect(page.getByLabel("E-Mail-Adresse")).toBeVisible();

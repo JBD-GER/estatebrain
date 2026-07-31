@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { BrandLogo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { signOutAction } from "@/app/(auth)/actions";
@@ -21,6 +22,9 @@ export default async function TenantPortalLayout({
             <span className="hidden text-sm text-muted-foreground sm:inline">
               Mieterportal
             </span>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/konto/einstellungen">Profil & Datenschutz</Link>
+            </Button>
             <form action={signOutAction}>
               <Button type="submit" variant="outline" size="sm">
                 Abmelden
