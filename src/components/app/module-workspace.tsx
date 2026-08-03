@@ -68,6 +68,7 @@ import {
   type ModuleRowAction,
 } from "@/lib/modules/interactions";
 import { moduleRowRequiresAttention } from "@/lib/modules/summary";
+import { propertyTypeLabel } from "@/lib/domain/property";
 
 const initialState: CreateRecordState = { status: "idle" };
 
@@ -105,6 +106,16 @@ const statusLabels: Record<string, string> = {
   urgent: "Dringend",
   demo: "Demo",
   connected: "Verbunden",
+  annuity: "Annuitätendarlehen",
+  repayment: "Ratentilgungsdarlehen",
+  interest_only: "Endfälliges Darlehen",
+  variable: "Variables Darlehen",
+  other: "Sonstiges",
+  advance: "Vorauszahlung",
+  flat_rate: "Betriebskostenpauschale",
+  none: "Keine gesonderten Nebenkosten",
+  existing: "Bestandsimmobilie",
+  scenario: "Fiktives Szenario",
 };
 
 function text(value: unknown) {
@@ -134,6 +145,8 @@ function formatCell(value: unknown, format?: string) {
       const key = String(value);
       return statusLabels[key] ?? key.replaceAll("_", " ");
     }
+    case "propertyType":
+      return propertyTypeLabel(value);
     default:
       return String(value);
   }
@@ -193,12 +206,16 @@ function CreateRecordDialog({
   definition,
   relations,
   relationErrors,
+  initialFieldValues,
+  initiallyOpen,
 }: {
   definition: ModuleDefinition;
   relations: RelationOptions;
   relationErrors: RelationLoadErrors;
+  initialFieldValues?: Record<string, string>;
+  initiallyOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(initiallyOpen));
   const [state, setState] = useState(initialState);
   const [pending, startTransition] = useTransition();
   const hasRelationLoadError = definition.fields.some(
@@ -306,6 +323,7 @@ function CreateRecordDialog({
                 {field.type === "select" ? (
                   <Select
                     name={field.name}
+                    defaultValue={initialFieldValues?.[field.name]}
                     required={field.required}
                     disabled={Boolean(
                       field.relation &&
@@ -355,6 +373,7 @@ function CreateRecordDialog({
                       step={field.type === "money" ? "0.01" : "any"}
                       className={cn(field.type === "money" && "pr-9")}
                       placeholder={field.placeholder}
+                      defaultValue={initialFieldValues?.[field.name]}
                       required={field.required}
                       aria-invalid={Boolean(fieldError)}
                     />
@@ -512,7 +531,7 @@ function BankDemoCard() {
             Hannover · Wohnung 2. OG links
           </p>
           <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-            <li>• Betrag stimmt exakt mit der Sollmiete überein</li>
+            <li>• Betrag stimmt exakt mit der offenen Mietforderung überein</li>
             <li>• Einheit wird im Verwendungszweck genannt</li>
             <li>• Buchungsdatum liegt im erwarteten Zeitfenster</li>
           </ul>
@@ -532,6 +551,8 @@ export function ModuleWorkspace({
   canCreate,
   headerActions,
   notice,
+  initialFieldValues,
+  initiallyOpenCreate,
 }: {
   definition: ModuleDefinition;
   rows: ModuleRow[];
@@ -542,6 +563,8 @@ export function ModuleWorkspace({
   canCreate: boolean;
   headerActions?: React.ReactNode;
   notice?: React.ReactNode;
+  initialFieldValues?: Record<string, string>;
+  initiallyOpenCreate?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const filteredRows = useMemo(() => {
@@ -609,6 +632,8 @@ export function ModuleWorkspace({
         definition={definition}
         relations={relations}
         relationErrors={relationErrors}
+        initialFieldValues={initialFieldValues}
+        initiallyOpen={initiallyOpenCreate}
       />
     ) : undefined;
   const actions =

@@ -1,3 +1,5 @@
+import { propertyTypeOptions } from "@/lib/domain/property";
+
 export type ModuleField = {
   name: string;
   label: string;
@@ -12,7 +14,15 @@ export type ModuleField = {
 export type ModuleColumn = {
   key: string;
   label: string;
-  format?: "text" | "money" | "date" | "status" | "number" | "percent" | "rate";
+  format?:
+    | "text"
+    | "money"
+    | "date"
+    | "status"
+    | "propertyType"
+    | "number"
+    | "percent"
+    | "rate";
 };
 
 export type ModuleDefinition = {
@@ -29,6 +39,11 @@ export type ModuleDefinition = {
   emptyTitle: string;
   emptyDescription: string;
 };
+
+const propertyTypeModuleOptions = propertyTypeOptions.map((option) => ({
+  label: `${option.abbreviation} · ${option.label}`,
+  value: option.value,
+}));
 
 export const moduleDefinitions: Record<string, ModuleDefinition> = {
   portfolio: {
@@ -63,7 +78,8 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       { key: "name", label: "Bezeichnung" },
       { key: "street", label: "Adresse" },
       { key: "city", label: "Ort" },
-      { key: "property_type", label: "Typ", format: "status" },
+      { key: "property_mode", label: "Modus", format: "status" },
+      { key: "property_type", label: "Typ", format: "propertyType" },
       { key: "current_market_value_cents", label: "Marktwert", format: "money" },
       { key: "rentable_area_sqm", label: "Vermietbare m²", format: "number" },
     ],
@@ -78,24 +94,88 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       { name: "postal_code", label: "Postleitzahl", type: "text", required: true },
       { name: "city", label: "Ort", type: "text", required: true },
       {
+        name: "property_mode",
+        label: "Objektmodus",
+        type: "select",
+        required: true,
+        options: [
+          { label: "Bestandsimmobilie", value: "existing" },
+          { label: "Fiktives Szenario", value: "scenario" },
+        ],
+      },
+      {
         name: "property_type",
         label: "Immobilientyp",
         type: "select",
         required: true,
-        options: [
-          { label: "Mehrfamilienhaus", value: "apartment_building" },
-          { label: "Eigentumswohnung", value: "condominium" },
-          { label: "Einfamilienhaus", value: "single_family" },
-          { label: "Gemischt genutzt", value: "mixed_use" },
-          { label: "Gewerbe", value: "commercial" },
-        ],
+        options: propertyTypeModuleOptions,
       },
-      { name: "purchase_date", label: "Kaufdatum", type: "date" },
-      { name: "purchase_price_cents", label: "Kaufpreis", type: "money" },
       {
-        name: "current_market_value_cents",
-        label: "Aktueller Marktwert",
+        name: "construction_year",
+        label: "Baujahr",
+        type: "number",
+        required: true,
+      },
+      {
+        name: "purchase_date",
+        label: "Kaufdatum",
+        type: "date",
+        required: true,
+      },
+      {
+        name: "purchase_price_cents",
+        label: "Kaufpreis gesamt",
         type: "money",
+        required: true,
+      },
+      {
+        name: "land_area_sqm",
+        label: "Grundstücksfläche in m²",
+        type: "number",
+        required: true,
+      },
+      {
+        name: "standard_land_value_cents_per_sqm",
+        label: "Bodenrichtwert je m²",
+        type: "money",
+        required: true,
+      },
+      {
+        name: "land_ownership_share",
+        label: "Miteigentumsanteil am Grundstück in %",
+        type: "number",
+        percentageRate: true,
+      },
+      {
+        name: "real_estate_transfer_tax_rate",
+        label: "Grunderwerbsteuersatz in %",
+        type: "number",
+        percentageRate: true,
+        required: true,
+      },
+      {
+        name: "broker_fee_cents",
+        label: "Maklerkosten",
+        type: "money",
+        required: true,
+      },
+      {
+        name: "notary_fee_cents",
+        label: "Notarkosten",
+        type: "money",
+        required: true,
+      },
+      {
+        name: "land_registry_fee_cents",
+        label: "Grundbuchkosten",
+        type: "money",
+        required: true,
+      },
+      {
+        name: "other_acquisition_costs_cents",
+        label: "Weitere Kaufnebenkosten",
+        type: "money",
+        required: true,
       },
       {
         name: "rentable_area_sqm",
@@ -113,14 +193,18 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
     title: "Einheiten",
     eyebrow: "Vermietbare Flächen",
     description:
-      "Wohnungen, Gewerbe- und Stellplatzeinheiten mit Sollmiete und Belegungsstatus.",
+      "Wohnungen, Gewerbe- und Stellplatzeinheiten mit Markt-/SOLL-Miete und Belegungsstatus.",
     table: "units",
     columns: [
       { key: "unit_number", label: "Einheit" },
       { key: "property_name", label: "Immobilie" },
       { key: "floor", label: "Etage" },
       { key: "area_sqm", label: "Fläche", format: "number" },
-      { key: "target_cold_rent_cents", label: "Soll-Kaltmiete", format: "money" },
+      {
+        key: "target_cold_rent_cents",
+        label: "Markt-/SOLL-Kaltmiete (mtl.)",
+        format: "money",
+      },
       { key: "status", label: "Status", format: "status" },
     ],
     fields: [
@@ -137,14 +221,25 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       { name: "rooms", label: "Zimmer", type: "number" },
       {
         name: "target_cold_rent_cents",
-        label: "Soll-Kaltmiete",
+        label: "Markt-/SOLL-Kaltmiete (mtl.)",
         type: "money",
         required: true,
       },
       {
         name: "ancillary_prepayment_cents",
-        label: "Nebenkostenvorauszahlung",
+        label: "Nebenkostenbetrag (mtl.)",
         type: "money",
+      },
+      {
+        name: "ancillary_charge_type",
+        label: "Nebenkostenart",
+        type: "select",
+        options: [
+          { label: "Vorauszahlung", value: "advance" },
+          { label: "Betriebskostenpauschale", value: "flat_rate" },
+          { label: "Keine gesonderten Nebenkosten", value: "none" },
+        ],
+        required: true,
       },
       {
         name: "status",
@@ -168,13 +263,22 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
     title: "Mietverhältnisse",
     eyebrow: "Verträge & Mietstatus",
     description:
-      "Aktive Verträge, Sollmieten, Kautionen, Laufzeiten und Zahlungsstatus.",
+      "Aktive Verträge, Vertragsmieten, Kautionen, Laufzeiten und Zahlungsstatus.",
     table: "leases",
     columns: [
       { key: "unit_name", label: "Einheit" },
       { key: "tenant_name", label: "Hauptmieter" },
       { key: "starts_on", label: "Mietbeginn", format: "date" },
-      { key: "cold_rent_cents", label: "Kaltmiete", format: "money" },
+      {
+        key: "cold_rent_cents",
+        label: "Vertrags-Kaltmiete (mtl.)",
+        format: "money",
+      },
+      {
+        key: "ancillary_charge_type",
+        label: "Nebenkostenart",
+        format: "status",
+      },
       { key: "deposit_cents", label: "Kaution", format: "money" },
       { key: "status", label: "Status", format: "status" },
     ],
@@ -266,7 +370,7 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
     title: "Ausgaben",
     eyebrow: "Kosten & Zuordnung",
     description:
-      "Liquiditätswirkung, steuerliche Einordnung und Belegstatus getrennt erfassen.",
+      "Ausgaben werden aus geprüften Rechnungen und Belegen übernommen.",
     table: "expense_entries",
     columns: [
       { key: "entry_date", label: "Datum", format: "date" },
@@ -275,41 +379,19 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       { key: "amount_cents", label: "Betrag", format: "money" },
       { key: "document_status", label: "Beleg", format: "status" },
     ],
-    fields: [
-      {
-        name: "property_id",
-        label: "Immobilie",
-        type: "select",
-        relation: "properties",
-        required: true,
-      },
-      { name: "entry_date", label: "Datum", type: "date", required: true },
-      { name: "description", label: "Beschreibung", type: "text", required: true },
-      { name: "amount_cents", label: "Betrag", type: "money", required: true },
-      {
-        name: "payment_status",
-        label: "Zahlungsstatus",
-        type: "select",
-        options: [
-          { label: "Bezahlt", value: "paid" },
-          { label: "Offen", value: "open" },
-          { label: "Teilweise", value: "partial" },
-        ],
-        required: true,
-      },
-    ],
-    createLabel: "Ausgabe erfassen",
+    fields: [],
+    readOnly: true,
     taxSensitive: true,
     emptyTitle: "Noch keine Ausgaben",
     emptyDescription:
-      "Erfasse Kosten und ordne sie einer Immobilie sowie einem Belegstatus zu.",
+      "Lade eine Rechnung oder einen Beleg hoch und ordne ihn einer Immobilie zu.",
   },
   belege: {
     slug: "belege",
     title: "Rechnungen & Belege",
     eyebrow: "Dokumente vollständig vorbereiten",
     description:
-      "Private Ablage, manuelle Erfassung, Zuordnung und klarer Prüfstatus.",
+      "Rechnungen und Belege prüfen, einer Immobilie zuordnen und als Ausgabe übernehmen.",
     table: "documents",
     columns: [
       { key: "original_file_name", label: "Dokument" },
@@ -356,9 +438,18 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
     columns: [
       { key: "lender_name", label: "Darlehensgeber" },
       { key: "loan_number", label: "Darlehen" },
+      { key: "loan_type", label: "Finanzierungsart", format: "status" },
       { key: "current_balance_cents", label: "Restschuld", format: "money" },
-      { key: "nominal_interest_rate", label: "Sollzins", format: "rate" },
-      { key: "monthly_payment_cents", label: "Monatsrate", format: "money" },
+      {
+        key: "nominal_interest_rate",
+        label: "Sollzins (p. a.)",
+        format: "rate",
+      },
+      {
+        key: "monthly_payment_cents",
+        label: "Darlehensrate (mtl.)",
+        format: "money",
+      },
       { key: "fixed_rate_until", label: "Zinsbindung", format: "date" },
     ],
     fields: [
@@ -368,6 +459,19 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
         type: "select",
         relation: "properties",
         required: true,
+      },
+      {
+        name: "loan_type",
+        label: "Finanzierungsart",
+        type: "select",
+        required: true,
+        options: [
+          { label: "Annuitätendarlehen", value: "annuity" },
+          { label: "Ratentilgungsdarlehen", value: "repayment" },
+          { label: "Endfälliges Darlehen", value: "interest_only" },
+          { label: "Variables Darlehen", value: "variable" },
+          { label: "Sonstiges", value: "other" },
+        ],
       },
       { name: "lender_name", label: "Darlehensgeber", type: "text", required: true },
       { name: "loan_number", label: "Darlehensnummer", type: "text" },
@@ -385,22 +489,27 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       },
       {
         name: "nominal_interest_rate",
-        label: "Zinssatz in %",
+        label: "Sollzins (p. a.) in %",
         type: "number",
         required: true,
         percentageRate: true,
       },
       {
         name: "initial_repayment_rate",
-        label: "Anfängliche Tilgung in %",
+        label: "Anfängliche Tilgung (p. a.) in %",
         type: "number",
         percentageRate: true,
       },
       {
         name: "monthly_payment_cents",
-        label: "Monatliche Rate",
+        label: "Darlehensrate (mtl.)",
         type: "money",
         required: true,
+      },
+      {
+        name: "disbursed_on",
+        label: "Auszahlung / Darlehensbeginn",
+        type: "date",
       },
       { name: "fixed_rate_until", label: "Ende Zinsbindung", type: "date" },
     ],

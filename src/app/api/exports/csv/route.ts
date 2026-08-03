@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getViewer } from "@/lib/auth/dal";
 import { hasPermission } from "@/lib/auth/permissions";
 import { rowsToCsv } from "@/lib/exports/csv";
+import { propertyTypeLabel } from "@/lib/domain";
 import {
   canAccessSensitiveReportData,
   resolveReportScope,
@@ -18,6 +19,7 @@ const exportDefinitions = {
     columns: [
       { key: "id", label: "ID" },
       { key: "name", label: "Immobilie" },
+      { key: "property_mode", label: "Objektmodus" },
       { key: "property_type", label: "Typ" },
       { key: "street", label: "Straße" },
       { key: "house_number", label: "Hausnummer" },
@@ -40,8 +42,12 @@ const exportDefinitions = {
       { key: "floor", label: "Etage" },
       { key: "area_sqm", label: "Fläche (m²)" },
       { key: "rooms", label: "Zimmer" },
-      { key: "target_cold_rent_cents", label: "Soll-Kaltmiete (Cent)" },
-      { key: "ancillary_prepayment_cents", label: "Nebenkosten (Cent)" },
+      {
+        key: "target_cold_rent_cents",
+        label: "Markt-/SOLL-Kaltmiete (mtl., Cent)",
+      },
+      { key: "ancillary_prepayment_cents", label: "Nebenkosten (mtl., Cent)" },
+      { key: "ancillary_charge_type", label: "Nebenkostenart" },
       { key: "status", label: "Status" },
     ],
   },
@@ -54,8 +60,12 @@ const exportDefinitions = {
       { key: "lease_number", label: "Vertragsnummer" },
       { key: "starts_on", label: "Mietbeginn" },
       { key: "ends_on", label: "Mietende" },
-      { key: "cold_rent_cents", label: "Kaltmiete (Cent)" },
-      { key: "ancillary_prepayment_cents", label: "Nebenkosten (Cent)" },
+      {
+        key: "cold_rent_cents",
+        label: "Vertrags-/IST-Kaltmiete (mtl., Cent)",
+      },
+      { key: "ancillary_prepayment_cents", label: "Nebenkosten (mtl., Cent)" },
+      { key: "ancillary_charge_type", label: "Nebenkostenart" },
       { key: "deposit_cents", label: "Kaution (Cent)" },
       { key: "status", label: "Status" },
     ],
@@ -177,6 +187,7 @@ export async function GET(request: NextRequest) {
             .from("properties")
             .select("id, name")
             .eq("organization_id", organizationId)
+            .eq("property_mode", "existing")
             .is("archived_at", null)
             .order("name")
             .order("id")
@@ -216,11 +227,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const reportPropertyIds = new Set(
+      (propertiesResult.data ?? []).map((property) => property.id),
+    );
+    const reportUnits = (unitsResult.data ?? []).filter((unit) =>
+      reportPropertyIds.has(unit.property_id),
+    );
     const scopeResolution = resolveReportScope({
       propertyParam: request.nextUrl.searchParams.get("property"),
       unitParam: request.nextUrl.searchParams.get("unit"),
       properties: propertiesResult.data ?? [],
-      units: unitsResult.data ?? [],
+      units: reportUnits,
     });
     if (!scopeResolution.scope) {
       return NextResponse.json(
@@ -229,6 +246,64 @@ export async function GET(request: NextRequest) {
       );
     }
     const scope = scopeResolution.scope;
+    const scopedUnits = reportUnits.filter(
+      (unit) =>
+        (!scope.propertyId || unit.property_id === scope.propertyId) &&
+        (!scope.unitId || unit.id === scope.unitId),
+    );
+    const scopedUnitIds = scopedUnits.map((unit) => unit.id);
+    const rentLeasesResult = scopedUnitIds.length
+      ? await fetchAllRows(
+          (from, to) =>
+            supabase
+              .from("leases")
+              .select("id, unit_id")
+              .eq("organization_id", organizationId)
+              .in("unit_id", scopedUnitIds)
+              .is("archived_at", null)
+              .order("id")
+              .range(from, to),
+          { label: "Mietverhältnisse für Mietzahlungen" },
+        )
+      : { data: [], error: null };
+    const rentLeaseIds = (rentLeasesResult.data ?? []).map(
+      (lease) => lease.id,
+    );
+    const rentClaimsResult = rentLeaseIds.length
+      ? await fetchAllRows(
+          (from, to) =>
+            supabase
+              .from("rent_claims")
+              .select("id, lease_id")
+              .eq("organization_id", organizationId)
+              .in("lease_id", rentLeaseIds)
+              .order("id")
+              .range(from, to),
+          { label: "Mietforderungen für Mietzahlungen" },
+        )
+      : { data: [], error: null };
+    const rentClaimIds = (rentClaimsResult.data ?? []).map(
+      (claim) => claim.id,
+    );
+    const rentPaymentsResult = rentClaimIds.length
+      ? await fetchAllRows(
+          (from, to) =>
+            supabase
+              .from("rent_payments")
+              .select(
+                "rent_claim_id, paid_on, amount_cents, bank_transaction_id",
+              )
+              .eq("organization_id", organizationId)
+              .in("rent_claim_id", rentClaimIds)
+              .eq("allocation_status", "confirmed")
+              .gte("paid_on", yearStart)
+              .lt("paid_on", nextYearStart)
+              .order("paid_on")
+              .order("id")
+              .range(from, to),
+          { label: "Bestätigte Mietzahlungen" },
+        )
+      : { data: [], error: null };
 
     const [incomeResult, expensesResult, bankResult] = await Promise.all([
       fetchAllRows(
@@ -236,7 +311,7 @@ export async function GET(request: NextRequest) {
           let query = supabase
             .from("income_entries")
             .select(
-              "entry_date, description, category, amount_cents, payment_status, property_id, unit_id",
+              "entry_date, description, category, amount_cents, payment_status, property_id, unit_id, bank_transaction_id",
             )
             .eq("organization_id", organizationId)
             .is("archived_at", null)
@@ -290,7 +365,14 @@ export async function GET(request: NextRequest) {
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-    if (incomeResult.error || expensesResult.error || bankResult.error) {
+    if (
+      incomeResult.error ||
+      expensesResult.error ||
+      bankResult.error ||
+      rentLeasesResult.error ||
+      rentClaimsResult.error ||
+      rentPaymentsResult.error
+    ) {
       return NextResponse.json(
         {
           error:
@@ -335,14 +417,38 @@ export async function GET(request: NextRequest) {
 
     const income = incomeResult.data ?? [];
     const expenses = expensesResult.data ?? [];
+    const rentPayments = rentPaymentsResult.data ?? [];
+    const rentPaymentBankIds = new Set(
+      rentPayments
+        .map((payment) => payment.bank_transaction_id)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const deduplicatedIncome = income.filter(
+      (row) =>
+        !row.bank_transaction_id ||
+        !rentPaymentBankIds.has(row.bank_transaction_id),
+    );
+    const paidIncomeCents =
+      rentPayments.reduce(
+        (sum, row) => sum + Number(row.amount_cents),
+        0,
+      ) +
+      deduplicatedIncome
+        .filter((row) => row.payment_status === "paid")
+        .reduce((sum, row) => sum + Number(row.amount_cents), 0);
+    const leaseById = new Map(
+      (rentLeasesResult.data ?? []).map((lease) => [lease.id, lease]),
+    );
+    const claimById = new Map(
+      (rentClaimsResult.data ?? []).map((claim) => [claim.id, claim]),
+    );
+    const unitById = new Map(scopedUnits.map((unit) => [unit.id, unit]));
     const rows: Array<Record<string, unknown>> = [
       {
         area: "Zusammenfassung",
         date_or_key: String(year),
         description: `Bezahlte Einnahmen · ${scope.label}`,
-        amount_cents: income
-          .filter((row) => row.payment_status === "paid")
-          .reduce((sum, row) => sum + Number(row.amount_cents), 0),
+        amount_cents: paidIncomeCents,
         status: "Vorbereitung",
         property_id: scope.propertyId ?? "",
         unit_id: scope.unitId ?? "",
@@ -397,7 +503,24 @@ export async function GET(request: NextRequest) {
               },
             ]
           : []),
-      ...income.map((row) => ({
+      ...rentPayments.map((row) => {
+        const claim = claimById.get(row.rent_claim_id);
+        const lease = claim ? leaseById.get(claim.lease_id) : undefined;
+        const unit = lease ? unitById.get(lease.unit_id) : undefined;
+        return {
+          area: "Mieteingang",
+          date_or_key: row.paid_on,
+          description: "Bestätigter Zahlungseingang aus Mietforderung",
+          amount_cents: row.amount_cents,
+          status: "bestätigt",
+          property_id: unit?.property_id ?? "",
+          unit_id: unit?.id ?? "",
+          receipt_status: "",
+          assumption: "",
+          scope: scope.label,
+        };
+      }),
+      ...deduplicatedIncome.map((row) => ({
         area: "Einnahme",
         date_or_key: row.entry_date,
         description: `${row.category}: ${row.description}`,
@@ -513,9 +636,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const exportRows = (data ?? []) as unknown as Array<
+    Record<string, unknown>
+  >;
   const csv = rowsToCsv({
     columns: definition.columns,
-    rows: (data ?? []) as unknown as Array<Record<string, unknown>>,
+    rows:
+      resource === "properties"
+        ? exportRows.map((row) => ({
+            ...row,
+            property_type: propertyTypeLabel(row.property_type),
+          }))
+        : exportRows,
   });
   const date = new Date().toISOString().slice(0, 10);
 

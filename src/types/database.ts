@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.15"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       audit_logs: {
@@ -542,9 +567,10 @@ export type Database = {
         Row: {
           acquisition_cost_cents: number
           acquisition_date: string
-          annual_rate: number
+          annual_rate: number | null
           archived_at: string | null
           asset_type: string
+          basis_as_of: string | null
           calculation_method: string
           created_at: string
           created_by: string | null
@@ -553,9 +579,14 @@ export type Database = {
           id: string
           land_share_cents: number
           manual_adjustment_cents: number
+          manual_annual_depreciation_cents: number | null
           name: string
+          opening_accumulated_depreciation_cents: number | null
+          opening_remaining_basis_cents: number | null
           organization_id: string
           property_id: string
+          source_document_id: string | null
+          source_type: string
           tax_year_id: string | null
           updated_at: string
           use_start_date: string
@@ -564,9 +595,10 @@ export type Database = {
         Insert: {
           acquisition_cost_cents: number
           acquisition_date: string
-          annual_rate: number
+          annual_rate?: number | null
           archived_at?: string | null
           asset_type?: string
+          basis_as_of?: string | null
           calculation_method?: string
           created_at?: string
           created_by?: string | null
@@ -575,9 +607,14 @@ export type Database = {
           id?: string
           land_share_cents?: number
           manual_adjustment_cents?: number
+          manual_annual_depreciation_cents?: number | null
           name: string
+          opening_accumulated_depreciation_cents?: number | null
+          opening_remaining_basis_cents?: number | null
           organization_id: string
           property_id: string
+          source_document_id?: string | null
+          source_type?: string
           tax_year_id?: string | null
           updated_at?: string
           use_start_date: string
@@ -586,9 +623,10 @@ export type Database = {
         Update: {
           acquisition_cost_cents?: number
           acquisition_date?: string
-          annual_rate?: number
+          annual_rate?: number | null
           archived_at?: string | null
           asset_type?: string
+          basis_as_of?: string | null
           calculation_method?: string
           created_at?: string
           created_by?: string | null
@@ -597,9 +635,14 @@ export type Database = {
           id?: string
           land_share_cents?: number
           manual_adjustment_cents?: number
+          manual_annual_depreciation_cents?: number | null
           name?: string
+          opening_accumulated_depreciation_cents?: number | null
+          opening_remaining_basis_cents?: number | null
           organization_id?: string
           property_id?: string
+          source_document_id?: string | null
+          source_type?: string
           tax_year_id?: string | null
           updated_at?: string
           use_start_date?: string
@@ -619,6 +662,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "properties"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "depreciation_assets_source_document_v2_fkey"
+            columns: ["organization_id", "source_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["organization_id", "id"]
           },
           {
             foreignKeyName: "depreciation_assets_tax_year_id_fkey"
@@ -1611,6 +1661,7 @@ export type Database = {
       }
       leases: {
         Row: {
+          ancillary_charge_type: string
           ancillary_prepayment_cents: number
           archived_at: string | null
           cold_rent_cents: number
@@ -1633,6 +1684,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ancillary_charge_type?: string
           ancillary_prepayment_cents?: number
           archived_at?: string | null
           cold_rent_cents: number
@@ -1655,6 +1707,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ancillary_charge_type?: string
           ancillary_prepayment_cents?: number
           archived_at?: string | null
           cold_rent_cents?: number
@@ -1786,6 +1839,7 @@ export type Database = {
           initial_repayment_rate: number | null
           lender_name: string
           loan_number: string | null
+          loan_type: string
           maturity_date: string | null
           monthly_payment_cents: number
           nominal_interest_rate: number
@@ -1809,6 +1863,7 @@ export type Database = {
           initial_repayment_rate?: number | null
           lender_name: string
           loan_number?: string | null
+          loan_type?: string
           maturity_date?: string | null
           monthly_payment_cents: number
           nominal_interest_rate: number
@@ -1832,6 +1887,7 @@ export type Database = {
           initial_repayment_rate?: number | null
           lender_name?: string
           loan_number?: string | null
+          loan_type?: string
           maturity_date?: string | null
           monthly_payment_cents?: number
           nominal_interest_rate?: number
@@ -2608,6 +2664,8 @@ export type Database = {
           annual_non_recoverable_cost_cents: number
           annual_property_tax_cents: number
           archived_at: string | null
+          broker_fee_cents: number
+          building_purchase_price_cents: number | null
           building_value_cents: number | null
           city: string
           construction_year: number | null
@@ -2620,19 +2678,31 @@ export type Database = {
           expected_monthly_rent_cents: number | null
           house_number: string | null
           id: string
+          land_area_sqm: number | null
+          land_ownership_share: number
+          land_registry_fee_cents: number
           land_value_cents: number | null
           latitude: number | null
           longitude: number | null
+          market_value_source: string | null
+          market_value_status: string
           name: string
+          notary_fee_cents: number
           notes: string | null
           organization_id: string
+          other_acquisition_costs_cents: number
           postal_code: string
+          property_mode: string
           property_type: string
           purchase_date: string | null
           purchase_price_cents: number | null
+          real_estate_transfer_tax_cents: number
+          real_estate_transfer_tax_rate: number | null
           rentable_area_sqm: number | null
+          standard_land_value_cents_per_sqm: number | null
           status: Database["public"]["Enums"]["record_status"]
           street: string
+          total_acquisition_cost_cents: number | null
           total_area_sqm: number | null
           unit_count: number | null
           updated_at: string
@@ -2644,6 +2714,8 @@ export type Database = {
           annual_non_recoverable_cost_cents?: number
           annual_property_tax_cents?: number
           archived_at?: string | null
+          broker_fee_cents?: number
+          building_purchase_price_cents?: number | null
           building_value_cents?: number | null
           city: string
           construction_year?: number | null
@@ -2656,19 +2728,31 @@ export type Database = {
           expected_monthly_rent_cents?: number | null
           house_number?: string | null
           id?: string
+          land_area_sqm?: number | null
+          land_ownership_share?: number
+          land_registry_fee_cents?: number
           land_value_cents?: number | null
           latitude?: number | null
           longitude?: number | null
+          market_value_source?: string | null
+          market_value_status?: string
           name: string
+          notary_fee_cents?: number
           notes?: string | null
           organization_id: string
+          other_acquisition_costs_cents?: number
           postal_code: string
+          property_mode?: string
           property_type?: string
           purchase_date?: string | null
           purchase_price_cents?: number | null
+          real_estate_transfer_tax_cents?: number
+          real_estate_transfer_tax_rate?: number | null
           rentable_area_sqm?: number | null
+          standard_land_value_cents_per_sqm?: number | null
           status?: Database["public"]["Enums"]["record_status"]
           street: string
+          total_acquisition_cost_cents?: number | null
           total_area_sqm?: number | null
           unit_count?: number | null
           updated_at?: string
@@ -2680,6 +2764,8 @@ export type Database = {
           annual_non_recoverable_cost_cents?: number
           annual_property_tax_cents?: number
           archived_at?: string | null
+          broker_fee_cents?: number
+          building_purchase_price_cents?: number | null
           building_value_cents?: number | null
           city?: string
           construction_year?: number | null
@@ -2692,19 +2778,31 @@ export type Database = {
           expected_monthly_rent_cents?: number | null
           house_number?: string | null
           id?: string
+          land_area_sqm?: number | null
+          land_ownership_share?: number
+          land_registry_fee_cents?: number
           land_value_cents?: number | null
           latitude?: number | null
           longitude?: number | null
+          market_value_source?: string | null
+          market_value_status?: string
           name?: string
+          notary_fee_cents?: number
           notes?: string | null
           organization_id?: string
+          other_acquisition_costs_cents?: number
           postal_code?: string
+          property_mode?: string
           property_type?: string
           purchase_date?: string | null
           purchase_price_cents?: number | null
+          real_estate_transfer_tax_cents?: number
+          real_estate_transfer_tax_rate?: number | null
           rentable_area_sqm?: number | null
+          standard_land_value_cents_per_sqm?: number | null
           status?: Database["public"]["Enums"]["record_status"]
           street?: string
+          total_acquisition_cost_cents?: number | null
           total_area_sqm?: number | null
           unit_count?: number | null
           updated_at?: string
@@ -2966,6 +3064,9 @@ export type Database = {
         Row: {
           amount_cents: number | null
           ancillary_cents: number
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           claim_month: string
           cold_rent_cents: number
           created_at: string
@@ -2985,6 +3086,9 @@ export type Database = {
         Insert: {
           amount_cents?: number | null
           ancillary_cents?: number
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           claim_month: string
           cold_rent_cents?: number
           created_at?: string
@@ -3004,6 +3108,9 @@ export type Database = {
         Update: {
           amount_cents?: number | null
           ancillary_cents?: number
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           claim_month?: string
           cold_rent_cents?: number
           created_at?: string
@@ -3093,6 +3200,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "rent_payments_organization_claim_fkey"
+            columns: ["organization_id", "rent_claim_id"]
+            isOneToOne: false
+            referencedRelation: "rent_claims"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
             foreignKeyName: "rent_payments_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -3110,6 +3224,7 @@ export type Database = {
       }
       rent_schedules: {
         Row: {
+          ancillary_charge_type: string
           ancillary_prepayment_cents: number
           cold_rent_cents: number
           created_at: string
@@ -3126,6 +3241,7 @@ export type Database = {
           valid_until: string | null
         }
         Insert: {
+          ancillary_charge_type?: string
           ancillary_prepayment_cents?: number
           cold_rent_cents: number
           created_at?: string
@@ -3142,6 +3258,7 @@ export type Database = {
           valid_until?: string | null
         }
         Update: {
+          ancillary_charge_type?: string
           ancillary_prepayment_cents?: number
           cold_rent_cents?: number
           created_at?: string
@@ -3469,6 +3586,7 @@ export type Database = {
         Row: {
           assessment_type: string
           assumed_taxable_income_cents: number | null
+          calculation_mode: string
           calculations_enabled: boolean
           church_tax_enabled: boolean
           church_tax_rate: number | null
@@ -3479,14 +3597,19 @@ export type Database = {
           id: string
           marginal_tax_rate: number | null
           organization_id: string
+          other_taxable_income_cents: number | null
+          rental_inputs_confirmed_at: string | null
           solidarity_surcharge_enabled: boolean
           solidarity_surcharge_rate: number | null
+          tariff_version: string | null
+          tariff_year: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
           assessment_type?: string
           assumed_taxable_income_cents?: number | null
+          calculation_mode?: string
           calculations_enabled?: boolean
           church_tax_enabled?: boolean
           church_tax_rate?: number | null
@@ -3497,14 +3620,19 @@ export type Database = {
           id?: string
           marginal_tax_rate?: number | null
           organization_id: string
+          other_taxable_income_cents?: number | null
+          rental_inputs_confirmed_at?: string | null
           solidarity_surcharge_enabled?: boolean
           solidarity_surcharge_rate?: number | null
+          tariff_version?: string | null
+          tariff_year?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
           assessment_type?: string
           assumed_taxable_income_cents?: number | null
+          calculation_mode?: string
           calculations_enabled?: boolean
           church_tax_enabled?: boolean
           church_tax_rate?: number | null
@@ -3515,8 +3643,12 @@ export type Database = {
           id?: string
           marginal_tax_rate?: number | null
           organization_id?: string
+          other_taxable_income_cents?: number | null
+          rental_inputs_confirmed_at?: string | null
           solidarity_surcharge_enabled?: boolean
           solidarity_surcharge_rate?: number | null
+          tariff_version?: string | null
+          tariff_year?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -3840,6 +3972,7 @@ export type Database = {
       units: {
         Row: {
           address_addition: string | null
+          ancillary_charge_type: string
           ancillary_prepayment_cents: number
           archived_at: string | null
           area_sqm: number | null
@@ -3862,6 +3995,7 @@ export type Database = {
         }
         Insert: {
           address_addition?: string | null
+          ancillary_charge_type?: string
           ancillary_prepayment_cents?: number
           archived_at?: string | null
           area_sqm?: number | null
@@ -3884,6 +4018,7 @@ export type Database = {
         }
         Update: {
           address_addition?: string | null
+          ancillary_charge_type?: string
           ancillary_prepayment_cents?: number
           archived_at?: string | null
           area_sqm?: number | null
@@ -4003,26 +4138,20 @@ export type Database = {
     Functions: {
       accept_invitation: { Args: { raw_token: string }; Returns: string }
       cancel_organization_deletion: {
-        Args: {
-          p_organization_id: string
-          p_request_id: string
-        }
+        Args: { p_organization_id: string; p_request_id: string }
         Returns: boolean
       }
-      complete_onboarding: { Args: { p_payload: Json }; Returns: string }
-      confirm_transaction_match: {
-        Args: { p_match_id: string }
+      cancel_rent_claim: {
+        Args: { p_reason: string; p_rent_claim_id: string }
         Returns: string
       }
-      create_valuation: {
-        Args: {
-          p_market_value_cents: number
-          p_organization_id: string
-          p_property_id: string
-          p_source_name: string
-          p_source_type: string
-          p_valued_on: string
-        }
+      complete_onboarding: { Args: { p_payload: Json }; Returns: string }
+      complete_onboarding_v2: {
+        Args: { p_legacy_payload: Json; p_payload: Json }
+        Returns: string
+      }
+      confirm_transaction_match: {
+        Args: { p_match_id: string }
         Returns: string
       }
       create_organization_with_owner: {
@@ -4046,6 +4175,10 @@ export type Database = {
         }
         Returns: string
       }
+      create_tenant_lease: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
       create_tenant_portal_conversation: {
         Args: {
           p_body: string
@@ -4066,9 +4199,20 @@ export type Database = {
         }
         Returns: string
       }
-      create_tenant_lease: {
+      create_valuation: {
+        Args: {
+          p_market_value_cents: number
+          p_organization_id: string
+          p_property_id: string
+          p_source_name: string
+          p_source_type: string
+          p_valued_on: string
+        }
+        Returns: string
+      }
+      finalize_onboarding_v2: {
         Args: { p_organization_id: string; p_payload: Json }
-        Returns: Json
+        Returns: string
       }
       generate_monthly_rent_claims: {
         Args: { p_organization_id: string; p_period: string }
@@ -4083,9 +4227,9 @@ export type Database = {
           lease_id: string
           lease_starts_on: string
           lease_status: string
-          other_rent_cents: number
           occupancy_ends_on: string
           occupancy_starts_on: string
+          other_rent_cents: number
           parking_rent_cents: number
           property_city: string
           property_house_number: string
@@ -4107,10 +4251,6 @@ export type Database = {
         }
         Returns: string
       }
-      resume_portfolio_onboarding: {
-        Args: { p_organization_id: string; p_payload: Json }
-        Returns: string
-      }
       reply_tenant_portal_conversation: {
         Args: {
           p_body: string
@@ -4120,9 +4260,18 @@ export type Database = {
         Returns: string
       }
       request_organization_deletion: {
+        Args: { p_organization_id: string; p_organization_name: string }
+        Returns: string
+      }
+      resume_portfolio_onboarding: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: string
+      }
+      resume_portfolio_onboarding_v2: {
         Args: {
+          p_legacy_payload: Json
           p_organization_id: string
-          p_organization_name: string
+          p_payload: Json
         }
         Returns: string
       }
@@ -4288,6 +4437,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: [

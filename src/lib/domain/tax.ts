@@ -85,6 +85,167 @@ export interface TaxCashflowResult {
   taxExplanation: string;
 }
 
+export type GermanTaxAssessmentType = "individual" | "joint";
+
+export interface GermanIncomeTaxEstimate {
+  taxYear: 2026;
+  assessmentType: GermanTaxAssessmentType;
+  otherTaxableIncomeCents: MoneyCents;
+  taxableRentalResultCents: MoneyCents;
+  taxableIncomeCents: MoneyCents;
+  incomeTaxBeforeRentalCents: MoneyCents;
+  incomeTaxAfterRentalCents: MoneyCents;
+  estimatedRentalTaxEffectCents: MoneyCents;
+  effectiveTaxRate: DecimalRate;
+  marginalTaxRate: DecimalRate;
+  explanation: string;
+  disclaimer: string;
+}
+
+/**
+ * Tarifliche Einkommensteuer 2026 nach § 32a Abs. 1 und 5 EStG.
+ *
+ * Das zu versteuernde Einkommen und die tarifliche Steuer werden wie im
+ * Gesetz auf volle Euro abgerundet. Kirchensteuer, Solidaritätszuschlag,
+ * Progressionsvorbehalt und individuelle Abzüge sind nicht enthalten.
+ */
+export function calculateGermanIncomeTax2026Cents(input: {
+  taxableIncomeCents: MoneyCents;
+  assessmentType: GermanTaxAssessmentType;
+}): MoneyCents {
+  assertMoneyCents(input.taxableIncomeCents, "taxableIncomeCents");
+  const taxableIncomeEuros = Math.floor(input.taxableIncomeCents / 100);
+  const divisor = input.assessmentType === "joint" ? 2 : 1;
+  const tariffIncomeEuros = Math.floor(taxableIncomeEuros / divisor);
+  const tariffTaxEuros = germanBasicIncomeTax2026Euros(
+    tariffIncomeEuros,
+  );
+  return tariffTaxEuros * divisor * 100;
+}
+
+/**
+ * Berechnet die zusätzliche tarifliche Steuerwirkung des steuerlichen
+ * Vermietungsergebnisses. Der Grenzsteuersatz wird als nachvollziehbare
+ * 100-Euro-Differenz am gesamten zvE ermittelt und nicht manuell abgefragt.
+ */
+export function calculateGermanRentalTaxEstimate2026(input: {
+  otherTaxableIncomeCents: MoneyCents;
+  taxableRentalResultCents: MoneyCents;
+  assessmentType: GermanTaxAssessmentType;
+}): GermanIncomeTaxEstimate {
+  assertMoneyCents(
+    input.otherTaxableIncomeCents,
+    "otherTaxableIncomeCents",
+  );
+  assertMoneyCents(
+    input.taxableRentalResultCents,
+    "taxableRentalResultCents",
+    { allowNegative: true },
+  );
+  const taxableIncomeCents = Math.max(
+    0,
+    input.otherTaxableIncomeCents + input.taxableRentalResultCents,
+  );
+  const incomeTaxBeforeRentalCents = calculateGermanIncomeTax2026Cents({
+    taxableIncomeCents: input.otherTaxableIncomeCents,
+    assessmentType: input.assessmentType,
+  });
+  const incomeTaxAfterRentalCents = calculateGermanIncomeTax2026Cents({
+    taxableIncomeCents,
+    assessmentType: input.assessmentType,
+  });
+  const marginalProbeCents = 10_000;
+  const taxAfterProbeCents = calculateGermanIncomeTax2026Cents({
+    taxableIncomeCents: taxableIncomeCents + marginalProbeCents,
+    assessmentType: input.assessmentType,
+  });
+
+  return {
+    taxYear: 2026,
+    assessmentType: input.assessmentType,
+    otherTaxableIncomeCents: input.otherTaxableIncomeCents,
+    taxableRentalResultCents: input.taxableRentalResultCents,
+    taxableIncomeCents,
+    incomeTaxBeforeRentalCents,
+    incomeTaxAfterRentalCents,
+    estimatedRentalTaxEffectCents:
+      incomeTaxAfterRentalCents - incomeTaxBeforeRentalCents,
+    effectiveTaxRate:
+      taxableIncomeCents === 0
+        ? 0
+        : incomeTaxAfterRentalCents / taxableIncomeCents,
+    marginalTaxRate:
+      (taxAfterProbeCents - incomeTaxAfterRentalCents) /
+      marginalProbeCents,
+    explanation:
+      input.assessmentType === "joint"
+        ? "Tarif 2026 mit Splittingverfahren: Die Steuer auf die Hälfte des gemeinsamen zu versteuernden Einkommens wird verdoppelt."
+        : "Tarifliche Einkommensteuer 2026 für Einzelveranlagung auf Basis des geschätzten zu versteuernden Einkommens.",
+    disclaimer: TAX_ESTIMATE_DISCLAIMER,
+  };
+}
+
+/** Gesetzlicher typisierter linearer AfA-Ausgangspunkt für Wohngebäude. */
+export function recommendedResidentialBuildingDepreciationRate(
+  constructionYear: number,
+): DecimalRate {
+  if (
+    !Number.isInteger(constructionYear) ||
+    constructionYear < 1000 ||
+    constructionYear > 2200
+  ) {
+    throw new DomainValidationError(
+      "constructionYear muss ein gültiges Baujahr sein.",
+      "constructionYear",
+    );
+  }
+  if (constructionYear < 1925) return 0.025;
+  if (constructionYear < 2023) return 0.02;
+  return 0.03;
+}
+
+/**
+ * Typisierter AfA-Ausgangspunkt anhand der Nutzung. Für Gewerbe ist das
+ * Baujahr nur eine Näherung für den gesetzlich maßgeblichen Bauantrag; der
+ * Wert bleibt deshalb ausdrücklich eine editierbare Modellannahme.
+ */
+export function recommendedBuildingDepreciationRate(
+  propertyType: string,
+  constructionYear: number,
+): DecimalRate {
+  if (propertyType !== "commercial") {
+    return recommendedResidentialBuildingDepreciationRate(constructionYear);
+  }
+  if (
+    !Number.isInteger(constructionYear) ||
+    constructionYear < 1000 ||
+    constructionYear > 2200
+  ) {
+    throw new DomainValidationError(
+      "constructionYear muss ein gültiges Baujahr sein.",
+      "constructionYear",
+    );
+  }
+  return constructionYear > 1985 ? 0.03 : 0.025;
+}
+
+function germanBasicIncomeTax2026Euros(taxableIncomeEuros: number) {
+  if (taxableIncomeEuros <= 12_348) return 0;
+  let tax: number;
+  if (taxableIncomeEuros <= 17_799) {
+    const y = (taxableIncomeEuros - 12_348) / 10_000;
+    tax = (914.51 * y + 1_400) * y;
+  } else if (taxableIncomeEuros <= 69_878) {
+    const z = (taxableIncomeEuros - 17_799) / 10_000;
+    tax = (173.1 * z + 2_397) * z + 1_034.87;
+  } else if (taxableIncomeEuros <= 277_825) {
+    tax = 0.42 * taxableIncomeEuros - 11_135.63;
+  } else {
+    tax = 0.45 * taxableIncomeEuros - 19_470.38;
+  }
+  return Math.max(0, Math.floor(tax));
+}
+
 /**
  * Straight-line depreciation with an editable monthly pro-rata assumption.
  *

@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
             "id, name, city, status, current_market_value_cents, purchase_price_cents",
           )
           .eq("organization_id", organizationId)
+          .eq("property_mode", "existing")
           .is("archived_at", null)
           .order("name")
           .order("id")
@@ -122,11 +123,17 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const reportPropertyIds = new Set(
+    (propertiesResult.data ?? []).map((property) => property.id),
+  );
+  const reportUnits = (unitsResult.data ?? []).filter((unit) =>
+    reportPropertyIds.has(unit.property_id),
+  );
   const scopeResolution = resolveReportScope({
     propertyParam: request.nextUrl.searchParams.get("property"),
     unitParam: request.nextUrl.searchParams.get("unit"),
     properties: propertiesResult.data ?? [],
-    units: unitsResult.data ?? [],
+    units: reportUnits,
   });
   if (!scopeResolution.scope) {
     return NextResponse.json(
@@ -138,7 +145,7 @@ export async function GET(request: NextRequest) {
   const properties = (propertiesResult.data ?? []).filter(
     (property) => !scope.propertyId || property.id === scope.propertyId,
   );
-  const units = (unitsResult.data ?? []).filter(
+  const units = reportUnits.filter(
     (unit) =>
       (!scope.propertyId || unit.property_id === scope.propertyId) &&
       (!scope.unitId || unit.id === scope.unitId),
@@ -186,7 +193,7 @@ export async function GET(request: NextRequest) {
       (from, to) => {
         let query = supabase
           .from("income_entries")
-          .select("amount_cents, payment_status")
+          .select("amount_cents, payment_status, bank_transaction_id")
           .eq("organization_id", organizationId)
           .is("archived_at", null)
           .gte("entry_date", yearStart)
@@ -271,6 +278,45 @@ export async function GET(request: NextRequest) {
     (lease) => !scope.hasObjectFilter || scopedUnitIds.has(lease.unit_id),
   );
   const scopedLeaseIds = new Set(leases.map((lease) => lease.id));
+  const rentPaymentClaimResult = scopedLeaseIds.size
+    ? await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from("rent_claims")
+            .select("id")
+            .eq("organization_id", organizationId)
+            .in("lease_id", [...scopedLeaseIds])
+            .order("id")
+            .range(from, to),
+        { label: "Mietforderungen für Zahlungen" },
+      )
+    : { data: [], error: null };
+  const rentPaymentClaimIds = (rentPaymentClaimResult.data ?? []).map(
+    (claim) => claim.id,
+  );
+  const confirmedRentPaymentsResult = rentPaymentClaimIds.length
+    ? await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from("rent_payments")
+            .select("amount_cents, bank_transaction_id")
+            .eq("organization_id", organizationId)
+            .in("rent_claim_id", rentPaymentClaimIds)
+            .eq("allocation_status", "confirmed")
+            .gte("paid_on", yearStart)
+            .lt("paid_on", nextYearStart)
+            .order("paid_on")
+            .order("id")
+            .range(from, to),
+        { label: "Bestätigte Mietzahlungen" },
+      )
+    : { data: [], error: null };
+  if (rentPaymentClaimResult.error || confirmedRentPaymentsResult.error) {
+    return NextResponse.json(
+      { error: "Die bestätigten Mietzahlungen konnten nicht geladen werden." },
+      { status: 502, headers: noStoreHeaders },
+    );
+  }
   const loans = loansResult.data ?? [];
   const income = incomeResult.data ?? [];
   const expenses = expensesResult.data ?? [];
@@ -278,16 +324,30 @@ export async function GET(request: NextRequest) {
     (claim) =>
       !scope.hasObjectFilter || scopedLeaseIds.has(claim.lease_id),
   );
+  const confirmedRentPayments = confirmedRentPaymentsResult.data ?? [];
+  const rentPaymentBankIds = new Set(
+    confirmedRentPayments
+      .map((payment) => payment.bank_transaction_id)
+      .filter((value): value is string => Boolean(value)),
+  );
   const paidIncome = income.filter(
-    (entry) => entry.payment_status === "paid",
+    (entry) =>
+      entry.payment_status === "paid" &&
+      (!entry.bank_transaction_id ||
+        !rentPaymentBankIds.has(entry.bank_transaction_id)),
   );
   const paidExpenses = expenses.filter(
     (entry) => entry.payment_status === "paid",
   );
-  const paidIncomeCents = sum(
-    paidIncome as unknown as Array<Record<string, unknown>>,
-    "amount_cents",
-  );
+  const paidIncomeCents =
+    sum(
+      paidIncome as unknown as Array<Record<string, unknown>>,
+      "amount_cents",
+    ) +
+    sum(
+      confirmedRentPayments as unknown as Array<Record<string, unknown>>,
+      "amount_cents",
+    );
   const paidExpenseCents = sum(
     paidExpenses as unknown as Array<Record<string, unknown>>,
     "amount_cents",

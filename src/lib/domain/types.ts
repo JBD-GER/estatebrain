@@ -28,7 +28,14 @@ export interface Property {
   organizationId: EntityId;
   name: string;
   address: string;
-  propertyType: "apartment_building" | "condominium" | "mixed_use";
+  propertyType:
+    | "apartment_building"
+    | "condominium"
+    | "single_family"
+    | "semi_detached"
+    | "terraced_house"
+    | "commercial"
+    | "mixed_use";
   purchaseDate: IsoDate;
   purchasePriceCents: MoneyCents;
   acquisitionCostsCents: MoneyCents;

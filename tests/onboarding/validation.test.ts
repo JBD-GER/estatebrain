@@ -1,108 +1,235 @@
 import { describe, expect, it } from "vitest";
 import {
-  emptyOnboardingSchema,
   nextOnboardingUnitNumber,
   onboardingSchema,
+  type OnboardingInput,
 } from "@/lib/validation/onboarding";
 
-const organization = {
+const organization: OnboardingInput["organization"] = {
   name: "Gregor Portfolio",
   organizationType: "private",
-  street: "",
-  postalCode: "",
-  city: "",
+  street: "Musterweg 1",
+  postalCode: "10115",
+  city: "Berlin",
   currency: "EUR",
   taxYear: 2026,
 };
 
-const tax = {
-  calculationsEnabled: false,
-  marginalTaxRate: null,
-  effectiveTaxRate: null,
+const tax: OnboardingInput["tax"] = {
+  calculationMode: "manual",
+  manualEffectiveTaxRate: 28,
+  otherTaxableIncome: null,
+  filingStatus: "single",
+  rentalIncomeComplete: false,
   churchTax: false,
   solidaritySurcharge: false,
-  taxableIncome: null,
-  filingStatus: "single",
 };
 
-const property = {
+const property: OnboardingInput["property"] = {
+  propertyMode: "existing",
   name: "Mehrfamilienhaus",
   street: "Musterstraße 1",
   postalCode: "10115",
   city: "Berlin",
   propertyType: "apartment_building",
+  constructionYear: 1990,
   purchaseDate: "2020-01-01",
   purchasePrice: 500_000,
-  acquisitionCosts: 50_000,
-  landValue: 100_000,
-  buildingValue: 400_000,
+  landArea: 300,
+  standardLandValue: 500,
+  landOwnershipSharePercent: 100,
+  realEstateTransferTaxRate: 6,
+  brokerFee: 12_000,
+  notaryFee: 7_500,
+  landRegistryFee: 2_500,
+  otherAcquisitionCosts: 1_000,
   totalArea: 120,
-  currentFinancing: 300_000,
-  marketValue: 600_000,
-  expectedMonthlyRent: 1_500,
+  depreciationMode: "calculated",
+  existingAnnualDepreciation: null,
 };
 
-const unit = {
+const unit: OnboardingInput["units"][number] = {
   unitNumber: "Wohnung 1",
   floor: "1. OG",
   area: 60,
   rooms: 2,
-  baseRent: 750,
+  contractColdRent: 750,
+  targetColdRent: 825,
   serviceCharge: 180,
+  ancillaryChargeType: "advance",
   parkingRent: 0,
   leaseStart: "2024-02-01",
   status: "occupied",
 };
 
-function fullOnboarding(overrides: Partial<typeof unit> = {}) {
+const financing: OnboardingInput["financing"] = {
+  enabled: false,
+  loanType: "annuity",
+  lenderName: "",
+  originalPrincipal: 0,
+  currentBalance: 0,
+  nominalInterestRate: 0,
+  initialRepaymentRate: 2,
+  monthlyPayment: 0,
+  disbursedOn: "",
+  fixedRateUntil: "",
+};
+
+function fullOnboarding(
+  unitOverrides: Partial<OnboardingInput["units"][number]> = {},
+  rootOverrides: Partial<OnboardingInput> = {},
+) {
   return {
     organization,
     tax,
     property,
-    units: [{ ...unit, ...overrides }],
+    units: [{ ...unit, ...unitOverrides }],
+    financing,
     importMode: "none",
+    confirmation: true,
+    ...rootOverrides,
   };
 }
 
-describe("empty onboarding", () => {
-  it("allows a fresh organization without property or sample data", () => {
-    expect(emptyOnboardingSchema.safeParse({ organization, tax }).success).toBe(
-      true,
-    );
+describe("onboarding completeness", () => {
+  it("accepts a fully confirmed portfolio with separate rents", () => {
+    expect(onboardingSchema.safeParse(fullOnboarding()).success).toBe(true);
   });
 
-  it("keeps a full portfolio setup strict", () => {
-    expect(
-      onboardingSchema.safeParse({
-        organization,
-        tax,
-        property: {},
-        units: [],
-        importMode: "none",
-      }).success,
-    ).toBe(false);
-  });
-});
-
-describe("full onboarding unit leases", () => {
-  it("requires a lease start for occupied units at the correct field", () => {
+  it("does not allow the final summary to be skipped", () => {
     const result = onboardingSchema.safeParse(
-      fullOnboarding({ leaseStart: "" }),
+      fullOnboarding({}, { confirmation: false }),
     );
-
     expect(result.success).toBe(false);
     if (result.success) return;
+    expect(result.error.issues).toContainEqual(
+      expect.objectContaining({ path: ["confirmation"] }),
+    );
+  });
 
+  it("permits multiple units only for an MFH", () => {
+    const result = onboardingSchema.safeParse(
+      fullOnboarding({}, {
+        property: { ...property, propertyType: "condominium" },
+        units: [unit, { ...unit, unitNumber: "Wohnung 2" }],
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toContainEqual(
+      expect.objectContaining({ path: ["units"] }),
+    );
+  });
+
+  it("requires the existing AfA when it is copied from the tax return", () => {
+    const result = onboardingSchema.safeParse(
+      fullOnboarding({}, {
+        property: {
+          ...property,
+          depreciationMode: "tax_return",
+          existingAnnualDepreciation: null,
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
     expect(result.error.issues).toContainEqual(
       expect.objectContaining({
-        path: ["units", 0, "leaseStart"],
-        message: "Bitte gib den Mietbeginn an.",
+        path: ["property", "existingAnnualDepreciation"],
       }),
     );
   });
 
-  it("accepts an occupied unit with a valid lease start", () => {
-    expect(onboardingSchema.safeParse(fullOnboarding()).success).toBe(true);
+  it("rejects a land-value assumption above total acquisition cost", () => {
+    const result = onboardingSchema.safeParse(
+      fullOnboarding({}, {
+        property: {
+          ...property,
+          landArea: 10_000,
+          standardLandValue: 1_000,
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["property", "standardLandValue"],
+      }),
+    );
+  });
+});
+
+describe("automatic tax inputs", () => {
+  const automaticTax = {
+    ...tax,
+    calculationMode: "automatic",
+    otherTaxableIncome: 50_000,
+  } as const;
+
+  it("waits until all contractual rents are confirmed", () => {
+    const result = onboardingSchema.safeParse(
+      fullOnboarding({}, { tax: automaticTax }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toContainEqual(
+      expect.objectContaining({ path: ["tax", "rentalIncomeComplete"] }),
+    );
+  });
+
+  it("accepts complete income plus the filing status", () => {
+    expect(
+      onboardingSchema.safeParse(
+        fullOnboarding({}, {
+          tax: { ...automaticTax, rentalIncomeComplete: true },
+        }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("uses the automatic tariff only for its supported 2026 version", () => {
+    const result = onboardingSchema.safeParse(
+      fullOnboarding({}, {
+        organization: { ...organization, taxYear: 2027 },
+        tax: { ...automaticTax, rentalIncomeComplete: true },
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toContainEqual(
+      expect.objectContaining({ path: ["organization", "taxYear"] }),
+    );
+  });
+
+  it("asks only for an effective rate in manual mode", () => {
+    expect(
+      onboardingSchema.safeParse(
+        fullOnboarding({}, {
+          tax: {
+            ...tax,
+            calculationMode: "manual",
+            manualEffectiveTaxRate: 28.5,
+          },
+        }),
+      ).success,
+    ).toBe(true);
+  });
+});
+
+describe("full onboarding unit leases", () => {
+  it("requires contractual rent and a start date for occupied units", () => {
+    const result = onboardingSchema.safeParse(
+      fullOnboarding({ contractColdRent: 0, leaseStart: "" }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path)).toEqual(
+      expect.arrayContaining([
+        ["units", 0, "contractColdRent"],
+        ["units", 0, "leaseStart"],
+      ]),
+    );
   });
 
   it.each(["vacant", "renovation"] as const)(
@@ -110,12 +237,11 @@ describe("full onboarding unit leases", () => {
     (status) => {
       expect(
         onboardingSchema.safeParse(
-          fullOnboarding({ status, leaseStart: "" }),
-        ).success,
-      ).toBe(true);
-      expect(
-        onboardingSchema.safeParse(
-          fullOnboarding({ status, leaseStart: "veralteter-entwurf" }),
+          fullOnboarding({
+            status,
+            contractColdRent: 0,
+            leaseStart: "veralteter-entwurf",
+          }),
         ).success,
       ).toBe(true);
     },
@@ -125,10 +251,8 @@ describe("full onboarding unit leases", () => {
     const result = onboardingSchema.safeParse(
       fullOnboarding({ leaseStart: "2024-02-31" }),
     );
-
     expect(result.success).toBe(false);
     if (result.success) return;
-
     expect(result.error.issues).toContainEqual(
       expect.objectContaining({
         path: ["units", 0, "leaseStart"],
@@ -138,17 +262,13 @@ describe("full onboarding unit leases", () => {
   });
 
   it("marks every duplicate unit number at its field", () => {
-    const result = onboardingSchema.safeParse({
-      ...fullOnboarding(),
-      units: [
-        unit,
-        { ...unit, unitNumber: " wohnung 1 " },
-      ],
-    });
-
+    const result = onboardingSchema.safeParse(
+      fullOnboarding({}, {
+        units: [unit, { ...unit, unitNumber: " wohnung 1 " }],
+      }),
+    );
     expect(result.success).toBe(false);
     if (result.success) return;
-
     expect(result.error.issues.map((issue) => issue.path)).toEqual(
       expect.arrayContaining([
         ["units", 0, "unitNumber"],

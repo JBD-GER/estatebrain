@@ -86,41 +86,48 @@ function KpiCard({
   value,
   description,
   icon: Icon,
+  href,
   tone = "default",
 }: {
   title: string;
   value: string;
   description: string;
   icon: LucideIcon;
+  href: string;
   tone?: "default" | "positive" | "warning";
 }) {
   return (
-    <Card className="min-h-40">
-      <CardHeader>
-        <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
-        <CardAction>
-          <span
-            className={cn(
-              "grid size-9 place-items-center rounded-lg",
-              tone === "positive" && "bg-primary/10 text-primary",
-              tone === "warning" &&
-                "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-              tone === "default" && "bg-muted text-muted-foreground",
-            )}
-          >
-            <Icon className="size-4" aria-hidden="true" />
+    <Link className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href={href}>
+      <Card className="min-h-40 transition-colors group-hover:border-primary/40 group-hover:bg-muted/20">
+        <CardHeader>
+          <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
+          <CardAction>
+            <span
+              className={cn(
+                "grid size-9 place-items-center rounded-lg",
+                tone === "positive" && "bg-primary/10 text-primary",
+                tone === "warning" &&
+                  "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                tone === "default" && "bg-muted text-muted-foreground",
+              )}
+            >
+              <Icon className="size-4" aria-hidden="true" />
+            </span>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="mt-auto">
+          <p className="text-2xl font-semibold tracking-tight tabular-nums">
+            {value}
+          </p>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            {description}
+          </p>
+          <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
+            Details <ArrowRight className="size-3" aria-hidden="true" />
           </span>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="mt-auto">
-        <p className="text-2xl font-semibold tracking-tight tabular-nums">
-          {value}
-        </p>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          {description}
-        </p>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
@@ -129,14 +136,19 @@ function StatTile({
   value,
   detail,
   icon: Icon,
+  href,
 }: {
   label: string;
   value: string;
   detail: string;
   icon: LucideIcon;
+  href: string;
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <Link
+      href={href}
+      className="group rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           {label}
@@ -145,7 +157,7 @@ function StatTile({
       </div>
       <p className="mt-3 text-xl font-semibold tabular-nums">{value}</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
-    </div>
+    </Link>
   );
 }
 
@@ -322,7 +334,7 @@ function PropertyTable({ snapshot }: { snapshot: DashboardSnapshot }) {
       <CardHeader>
         <CardTitle>Performance je Immobilie</CardTitle>
         <CardDescription>
-          Vertragsmiete, Leerstand, Marktwert und geplante Maßnahmen.
+          Vertrags- und Marktmiete, Zahlung, laufende Ausgaben und Cashflow.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -330,31 +342,58 @@ function PropertyTable({ snapshot }: { snapshot: DashboardSnapshot }) {
           <TableHeader>
             <TableRow>
               <TableHead>Immobilie</TableHead>
-              <TableHead className="text-right">Soll-Kaltmiete</TableHead>
-              <TableHead className="text-right">Leerstand</TableHead>
-              <TableHead className="text-right">Bruttorendite</TableHead>
-              <TableHead className="text-right">Marktwert</TableHead>
-              <TableHead className="text-right">Sanierung geplant</TableHead>
+              <TableHead className="text-right">IST-Vertragsmiete (mtl.)</TableHead>
+              <TableHead className="text-right">SOLL-Marktmiete (mtl.)</TableHead>
+              <TableHead className="text-right">Zahlungseingang (mtl.)</TableHead>
+              <TableHead className="text-right">Ausgaben lfd. Jahr</TableHead>
+              <TableHead className="text-right">Schuldendienst (mtl.)</TableHead>
+              <TableHead className="text-right">Cashflow (mtl.)</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {snapshot.properties.map((property) => (
               <TableRow key={property.id}>
-                <TableCell className="font-medium">{property.name}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {euros(property.monthlyTargetColdRentCents)}
+                <TableCell className="font-medium">
+                  <Link
+                    className="hover:text-primary hover:underline"
+                    href={`/app/immobilien/${property.id}`}
+                  >
+                    {property.name}
+                  </Link>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {percent(property.vacancyRate)}
+                  {euros(property.monthlyContractColdRentCents)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {percent(property.grossYield)}
+                  {euros(property.monthlyMarketColdRentCents)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {euros(property.marketValueCents)}
+                  {euros(property.monthlyRentPaymentsCents)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {euros(property.plannedRenovationCents)}
+                  {euros(property.currentYearExpensesCents)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {euros(property.monthlyDebtServiceCents)}
+                  <span className="ml-1 block text-[10px] text-muted-foreground">
+                    {property.debtServiceMode === "forecast"
+                      ? "Prognose"
+                      : property.debtServiceMode === "actual"
+                        ? "gebucht"
+                        : property.debtServiceMode === "mixed"
+                          ? "gemischt"
+                          : "keine"}
+                  </span>
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    "text-right font-semibold tabular-nums",
+                    property.monthlyCashflowAfterFinancingCents >= 0
+                      ? "text-emerald-700 dark:text-emerald-400"
+                      : "text-destructive",
+                  )}
+                >
+                  {euros(property.monthlyCashflowAfterFinancingCents)}
                 </TableCell>
               </TableRow>
             ))}
@@ -362,6 +401,86 @@ function PropertyTable({ snapshot }: { snapshot: DashboardSnapshot }) {
         </Table>
       </CardContent>
     </Card>
+  );
+}
+
+function PropertyCashflowCards({ snapshot }: { snapshot: DashboardSnapshot }) {
+  return (
+    <section aria-labelledby="property-cashflow">
+      <div className="mb-3 flex items-end justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold" id="property-cashflow">
+            Cashflow je Immobilie
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Zahlungseingänge minus zugeordnete Belegausgaben und Schuldendienst.
+          </p>
+        </div>
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/app/cashflow">Gesamt-Cashflow ansehen</Link>
+        </Button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {snapshot.properties.map((property) => {
+          const positive = property.monthlyCashflowAfterFinancingCents >= 0;
+          return (
+            <Link
+              key={property.id}
+              href={`/app/immobilien/${property.id}`}
+              className={cn(
+                "group rounded-xl border-l-4 bg-card p-4 shadow-xs transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                positive
+                  ? "border-l-emerald-500"
+                  : "border-l-destructive",
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{property.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    nach Finanzierung · monatlich
+                  </p>
+                </div>
+                <ArrowRight
+                  aria-hidden="true"
+                  className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                />
+              </div>
+              <p
+                className={cn(
+                  "mt-4 text-2xl font-semibold tabular-nums",
+                  positive
+                    ? "text-emerald-700 dark:text-emerald-400"
+                    : "text-destructive",
+                )}
+              >
+                {euros(property.monthlyCashflowAfterFinancingCents)}
+              </p>
+              <dl className="mt-4 grid grid-cols-3 gap-2 border-t pt-3 text-xs">
+                <div>
+                  <dt className="text-muted-foreground">Einnahmen</dt>
+                  <dd className="mt-1 font-medium tabular-nums">
+                    {euros(property.monthlyIncomeCents)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Ausgaben</dt>
+                  <dd className="mt-1 font-medium tabular-nums">
+                    {euros(property.monthlyCashExpensesCents)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Finanzierung</dt>
+                  <dd className="mt-1 font-medium tabular-nums">
+                    {euros(property.monthlyDebtServiceCents)}
+                  </dd>
+                </div>
+              </dl>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -391,7 +510,10 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
           ) : (
             <>
               <Button asChild variant="outline">
-                <Link href="/app/ausgaben">Ausgabe erfassen</Link>
+                <Link href="/app/immobilien">Immobilie hinzufügen</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/app/belege">Rechnung oder Beleg erfassen</Link>
               </Button>
               <Button asChild>
                 <Link href="/app/einnahmen">Einnahme erfassen</Link>
@@ -429,15 +551,29 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
               </h2>
               <Info className="size-3.5 text-muted-foreground" aria-hidden="true" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <KpiCard
-                description={`${euros(
-                  metrics.monthlyActualRentCents,
-                )} eingegangen · ${percent(rentCoverage)} erfüllt`}
+                description="Aktive Kaltmiete aus realen Mietverhältnissen, ohne Nebenkosten."
                 icon={CircleDollarSign}
-                title="Sollmiete"
+                title="IST / Vertrags-Kaltmiete (mtl.)"
                 tone="positive"
-                value={euros(metrics.monthlyTargetRentCents)}
+                value={euros(metrics.monthlyContractColdRentCents)}
+                href="/app/mietverhaeltnisse"
+              />
+              <KpiCard
+                description="Hinterlegte Markt-/Ziel-Kaltmiete als Vergleichspotenzial."
+                icon={TrendingUp}
+                title="SOLL / Markt-Kaltmiete (mtl.)"
+                value={euros(metrics.monthlyMarketColdRentCents)}
+                href="/app/potenziale"
+              />
+              <KpiCard
+                description={`${percent(rentCoverage)} der fälligen Monatsmiete bestätigt`}
+                icon={Banknote}
+                title="Zahlungseingang Miete (mtl.)"
+                tone="positive"
+                value={euros(metrics.monthlyActualRentCents)}
+                href="/app/einnahmen"
               />
               <KpiCard
                 description="Einnahmen minus liquiditätswirksame Betriebsausgaben."
@@ -447,6 +583,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                   metrics.operatingCashflowCents >= 0 ? "positive" : "warning"
                 }
                 value={euros(metrics.operatingCashflowCents)}
+                href="/app/cashflow"
               />
               <KpiCard
                 description="Operativer Cashflow abzüglich Zins und Tilgung."
@@ -456,12 +593,22 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                   metrics.financingCashflowCents >= 0 ? "positive" : "warning"
                 }
                 value={euros(metrics.financingCashflowCents)}
+                href="/app/cashflow"
               />
               <KpiCard
                 description="Unverbindliche Modellrechnung mit hinterlegten Annahmen."
                 icon={ReceiptText}
                 title="Nach geschätzter Steuer"
                 value={euros(metrics.estimatedAfterTaxCents)}
+                href="/app/steuern"
+              />
+              <KpiCard
+                description="Immobilienbezogene Ausgaben aus geprüften Rechnungen und Belegen."
+                icon={ReceiptText}
+                title="Gesamtausgaben laufendes Jahr"
+                tone="warning"
+                value={euros(metrics.currentYearExpensesCents)}
+                href="/app/belege"
               />
               <KpiCard
                 description={`${metrics.valuedPropertyCount} von ${
@@ -470,6 +617,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                 icon={Building2}
                 title="Erfasster Portfoliowert"
                 value={euros(metrics.portfolioValueCents)}
+                href="/app/immobilien"
               />
               <KpiCard
                 description={
@@ -485,6 +633,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                 title="Geschätztes Eigenkapital"
                 tone="positive"
                 value={euros(metrics.equityCents)}
+                href="/app/immobilien"
               />
             </div>
           </section>
@@ -503,6 +652,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
               icon={Building2}
               label="Immobilien"
               value={integerFormatter.format(metrics.propertyCount)}
+              href="/app/immobilien"
             />
             <StatTile
               detail={`${integerFormatter.format(
@@ -511,18 +661,21 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
               icon={Users}
               label="Vermietet"
               value={`${metrics.occupiedUnitCount}/${metrics.unitCount}`}
+              href="/app/mietverhaeltnisse"
             />
             <StatTile
               detail="Nach Anzahl vermietbarer Einheiten"
               icon={Landmark}
               label="Leerstandsquote"
               value={percent(metrics.vacancyRate)}
+              href="/app/potenziale"
             />
             <StatTile
               detail="Über alle offenen Mietforderungen"
               icon={AlertTriangle}
               label="Miete offen"
               value={euros(metrics.openRentCents)}
+              href="/app/einnahmen"
             />
             <StatTile
               detail={
@@ -537,34 +690,38 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                   ? euros(metrics.loanBalanceCents)
                   : "Nicht verfügbar"
               }
+              href="/app/finanzierungen"
             />
             <StatTile
               detail="Noch nicht abgeschlossene Vorhaben"
               icon={Wrench}
               label="Sanierungsbedarf"
               value={euros(metrics.plannedRenovationCents)}
+              href="/app/sanierungen"
             />
             <StatTile
               detail="Fehlend, unklar oder zu prüfen"
               icon={FileQuestion}
               label="Belege klären"
               value={integerFormatter.format(metrics.unresolvedDocuments)}
+              href="/app/belege"
             />
             <StatTile
               detail={`${metrics.expiringLeases} Vertragsende in 12 Monaten`}
               icon={ListChecks}
               label="Offene Aufgaben"
               value={integerFormatter.format(metrics.openTasks)}
+              href="/app/aufgaben"
             />
           </section>
 
           <section className="grid gap-6 xl:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Soll- und Ist-Miete</CardTitle>
+                <CardTitle>Mietforderung und Zahlungseingang</CardTitle>
                 <CardDescription>
-                  Vertraglicher Anspruch und vorhandene Zahlungseingänge der
-                  letzten zwölf Monate.
+                  Fällige Vertragsmiete und bestätigte Zahlungen der letzten
+                  zwölf Monate. Der Marktvergleich steht unter Potenziale.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -601,6 +758,8 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
             <DashboardActions snapshot={snapshot} />
           </section>
 
+          <PropertyCashflowCards snapshot={snapshot} />
+
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
             <PropertyTable snapshot={snapshot} />
             <OpenClaims snapshot={snapshot} />
@@ -612,6 +771,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
               icon={ReceiptText}
               label="Geschätzte Steuerwirkung p.a."
               value={euros(metrics.annualEstimatedTaxEffectCents)}
+              href="/app/steuern"
             />
             <StatTile
               detail={
@@ -626,12 +786,14 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                   ? date(metrics.nextFinancingExpiry)
                   : "Nicht verfügbar"
               }
+              href="/app/finanzierungen"
             />
             <StatTile
               detail="Aktive Vertragskaltmiete im Verhältnis zu erfassten Kaufpreisen"
               icon={TrendingUp}
               label="Bruttomietrendite"
               value={percent(metrics.grossRentalYield)}
+              href="/app/potenziale"
             />
           </section>
 

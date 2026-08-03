@@ -34,6 +34,7 @@ export type DashboardUnitSource = {
   propertyId: string;
   label: string;
   areaSquareMeters: number | null;
+  targetColdRentCents: number;
   status: string;
 };
 
@@ -60,6 +61,7 @@ export type DashboardRentClaimSource = {
 };
 
 export type DashboardRentPaymentSource = {
+  rentClaimId: string | null;
   paidOn: string;
   amountCents: number;
   bankTransactionId: string | null;
@@ -77,6 +79,7 @@ export type DashboardExpenseSource = {
   propertyId: string | null;
   entryDate: string;
   amountCents: number;
+  bankTransactionId: string | null;
   cashEffective: boolean;
   isInterest: boolean;
   isPrincipal: boolean;
@@ -91,6 +94,18 @@ export type DashboardLoanSource = {
   monthlyPaymentCents: number;
   fixedRateUntil: string | null;
   status: string;
+};
+
+export type DashboardLoanPaymentSource = {
+  loanId: string;
+  dueDate: string;
+  paidOn: string | null;
+  paymentCents: number;
+  interestCents: number;
+  principalCents: number;
+  feesCents: number;
+  status: string;
+  bankTransactionId: string | null;
 };
 
 export type DashboardTaskSource = {
@@ -126,6 +141,7 @@ export type DashboardSource = {
   income: DashboardIncomeSource[];
   expenses: DashboardExpenseSource[];
   loans: DashboardLoanSource[];
+  loanPayments: DashboardLoanPaymentSource[];
   loansAvailable?: boolean;
   unresolvedDocuments: number;
   tasks: DashboardTaskSource[];
@@ -192,7 +208,7 @@ function formatPeriodLabel(anchorDate: string) {
 }
 
 function isLeaseInMonth(lease: DashboardLeaseSource, month: string) {
-  if (lease.status === "draft" || lease.status === "cancelled") return false;
+  if (["draft", "ended", "cancelled"].includes(lease.status)) return false;
   return (
     lease.startsOn <= monthEnd(month) &&
     (lease.endsOn === null || lease.endsOn >= monthStart(month))
@@ -212,12 +228,65 @@ function sumAmounts(items: readonly { amountCents: number }[]) {
   return sumCents(items.map((item) => item.amountCents));
 }
 
-function rentIncomeForMonth(source: DashboardSource, month: string) {
-  const payments = source.rentPayments.filter(
+type DashboardRelationMaps = {
+  unitProperty: Map<string, string>;
+  leaseProperty: Map<string, string | null>;
+  claimProperty: Map<string, string | null>;
+};
+
+const RELATION_MAP_CACHE = new WeakMap<
+  DashboardSource,
+  DashboardRelationMaps
+>();
+
+function relationMaps(source: DashboardSource): DashboardRelationMaps {
+  const cached = RELATION_MAP_CACHE.get(source);
+  if (cached) return cached;
+
+  const unitProperty = new Map(
+    source.units.map((unit) => [unit.id, unit.propertyId]),
+  );
+  const leaseProperty = new Map(
+    source.leases.map((lease) => [
+      lease.id,
+      unitProperty.get(lease.unitId) ?? null,
+    ]),
+  );
+  const claimProperty = new Map(
+    source.rentClaims.map((claim) => [
+      claim.id,
+      leaseProperty.get(claim.leaseId) ?? null,
+    ]),
+  );
+
+  const maps = { unitProperty, leaseProperty, claimProperty };
+  RELATION_MAP_CACHE.set(source, maps);
+  return maps;
+}
+
+function rentPaymentPropertyId(
+  source: DashboardSource,
+  payment: DashboardRentPaymentSource,
+) {
+  if (payment.rentClaimId === null) return null;
+  return relationMaps(source).claimProperty.get(payment.rentClaimId) ?? null;
+}
+
+function rentIncomeForMonth(
+  source: DashboardSource,
+  month: string,
+  propertyId?: string,
+) {
+  const monthPayments = source.rentPayments.filter(
     (payment) => monthKey(payment.paidOn) === month,
   );
+  const payments = monthPayments.filter(
+    (payment) =>
+      propertyId === undefined ||
+      rentPaymentPropertyId(source, payment) === propertyId,
+  );
   const representedBankTransactions = new Set(
-    payments
+    monthPayments
       .map((payment) => payment.bankTransactionId)
       .filter((id): id is string => id !== null),
   );
@@ -225,16 +294,24 @@ function rentIncomeForMonth(source: DashboardSource, month: string) {
     (entry) =>
       monthKey(entry.entryDate) === month &&
       RENT_CATEGORIES.has(entry.category) &&
-      (entry.bankTransactionId === null
-        ? payments.length === 0
-        : !representedBankTransactions.has(entry.bankTransactionId)),
+      (propertyId === undefined || entry.propertyId === propertyId) &&
+      (entry.bankTransactionId === null ||
+        !representedBankTransactions.has(entry.bankTransactionId)),
   );
   return sumAmounts(payments) + sumAmounts(additionalRentIncome);
 }
 
-function targetRentForMonth(source: DashboardSource, month: string) {
+function targetRentForMonth(
+  source: DashboardSource,
+  month: string,
+  propertyId?: string,
+) {
+  const { claimProperty, leaseProperty } = relationMaps(source);
   const claims = source.rentClaims.filter(
-    (claim) => monthKey(claim.claimMonth) === month,
+    (claim) =>
+      monthKey(claim.claimMonth) === month &&
+      (propertyId === undefined ||
+        claimProperty.get(claim.id) === propertyId),
   );
   if (claims.length > 0) return sumAmounts(claims);
 
@@ -244,7 +321,12 @@ function targetRentForMonth(source: DashboardSource, month: string) {
   ) {
     return sumCents(
       source.leases
-        .filter((lease) => isLeaseInMonth(lease, month))
+        .filter(
+          (lease) =>
+            isLeaseInMonth(lease, month) &&
+            (propertyId === undefined ||
+              leaseProperty.get(lease.id) === propertyId),
+        )
         .map(leaseTotal),
     );
   }
@@ -252,10 +334,127 @@ function targetRentForMonth(source: DashboardSource, month: string) {
   return null;
 }
 
-function monthFinancials(source: DashboardSource, month: string) {
-  const actualRentCents = rentIncomeForMonth(source, month);
+type DebtServiceMode = "actual" | "forecast" | "mixed" | "none";
+
+function debtServiceForMonth(
+  source: DashboardSource,
+  month: string,
+  propertyId?: string,
+) {
+  const applicableLoans = source.loans.filter(
+    (loan) =>
+      ["active", "refinancing_due"].includes(loan.status) &&
+      (propertyId === undefined || loan.propertyId === propertyId),
+  );
+  const loanIds = new Set(applicableLoans.map((loan) => loan.id));
+  const confirmedPayments = source.loanPayments.filter(
+    (payment) =>
+      loanIds.has(payment.loanId) &&
+      ["paid", "overpaid"].includes(payment.status) &&
+      monthKey(payment.paidOn ?? payment.dueDate) === month,
+  );
+  const paymentsByLoan = new Map<string, DashboardLoanPaymentSource[]>();
+  for (const payment of confirmedPayments) {
+    const list = paymentsByLoan.get(payment.loanId) ?? [];
+    list.push(payment);
+    paymentsByLoan.set(payment.loanId, list);
+  }
+
+  const isCurrentMonth = month === monthKey(source.asOfDate);
+  let totalCents = 0;
+  let interestCents = 0;
+  let principalCents = 0;
+  let otherFinancingCostsCents = 0;
+  let hasActual = false;
+  let hasForecast = false;
+
+  for (const loan of applicableLoans) {
+    const payments = paymentsByLoan.get(loan.id) ?? [];
+    if (payments.length > 0) {
+      hasActual = true;
+      for (const payment of payments) {
+        const paymentTotal = payment.paymentCents;
+        const paymentInterest = Math.min(
+          payment.interestCents,
+          paymentTotal,
+        );
+        const paymentPrincipal = Math.min(
+          payment.principalCents,
+          paymentTotal - paymentInterest,
+        );
+        totalCents += paymentTotal;
+        interestCents += paymentInterest;
+        principalCents += paymentPrincipal;
+        otherFinancingCostsCents +=
+          paymentTotal - paymentInterest - paymentPrincipal;
+      }
+      continue;
+    }
+
+    if (isCurrentMonth && loan.monthlyPaymentCents > 0) {
+      hasForecast = true;
+      totalCents += loan.monthlyPaymentCents;
+      // Without a confirmed split, the forecast rate affects liquidity only.
+      otherFinancingCostsCents += loan.monthlyPaymentCents;
+    }
+  }
+
+  const financingExpenses = source.expenses.filter(
+    (expense) =>
+      expense.cashEffective &&
+      monthKey(expense.entryDate) === month &&
+      (expense.isInterest || expense.isPrincipal) &&
+      (propertyId === undefined || expense.propertyId === propertyId),
+  );
+  const financedPropertyIds = new Set(
+    applicableLoans.map((loan) => loan.propertyId),
+  );
+  const legacyFinancingExpenses = financingExpenses.filter(
+    (expense) =>
+      expense.propertyId === null ||
+      !financedPropertyIds.has(expense.propertyId),
+  );
+  if (legacyFinancingExpenses.length > 0) {
+    hasActual = true;
+    const legacyInterest = sumAmounts(
+      legacyFinancingExpenses.filter((expense) => expense.isInterest),
+    );
+    const legacyPrincipal = sumAmounts(
+      legacyFinancingExpenses.filter((expense) => expense.isPrincipal),
+    );
+    interestCents += legacyInterest;
+    principalCents += legacyPrincipal;
+    totalCents += legacyInterest + legacyPrincipal;
+  }
+
+  const mode: DebtServiceMode =
+    hasActual && hasForecast
+      ? "mixed"
+      : hasActual
+        ? "actual"
+        : hasForecast
+          ? "forecast"
+          : "none";
+
+  return {
+    totalCents,
+    interestCents,
+    principalCents,
+    otherFinancingCostsCents,
+    mode,
+  };
+}
+
+function monthFinancials(
+  source: DashboardSource,
+  month: string,
+  propertyId?: string,
+) {
+  const actualRentCents = rentIncomeForMonth(source, month, propertyId);
   const incomeEntries = source.income.filter(
-    (entry) => monthKey(entry.entryDate) === month,
+    (entry) =>
+      monthKey(entry.entryDate) === month &&
+      (propertyId === undefined || entry.propertyId === propertyId),
   );
   const otherIncomeCents = sumAmounts(
     incomeEntries.filter((entry) => !RENT_CATEGORIES.has(entry.category)),
@@ -264,21 +463,17 @@ function monthFinancials(source: DashboardSource, month: string) {
   const expenses = source.expenses.filter(
     (expense) =>
       monthKey(expense.entryDate) === month && expense.cashEffective,
+  ).filter(
+    (expense) =>
+      propertyId === undefined || expense.propertyId === propertyId,
   );
   const operatingExpenses = expenses.filter(
-    (expense) =>
-      !expense.isInterest &&
-      !expense.isPrincipal &&
-      !expense.isCapitalizable,
+    (expense) => !expense.isInterest && !expense.isPrincipal,
   );
-  const interestCents = sumAmounts(
-    expenses.filter((expense) => expense.isInterest),
-  );
-  const principalCents = sumAmounts(
-    expenses.filter((expense) => expense.isPrincipal),
-  );
-  const totalExpensesCents = sumAmounts(expenses);
   const operatingExpensesCents = sumAmounts(operatingExpenses);
+  const debtService = debtServiceForMonth(source, month, propertyId);
+  const totalExpensesCents =
+    operatingExpensesCents + debtService.totalCents;
   const deductibleOperatingExpensesCents = sumAmounts(
     operatingExpenses.filter((expense) => expense.isDeductible),
   );
@@ -288,31 +483,91 @@ function monthFinancials(source: DashboardSource, month: string) {
   });
   const financingCashflowCents = calculateCashflowAfterFinancingCents({
     operatingCashflowCents,
-    interestPaidCents: interestCents,
-    principalPaidCents: principalCents,
+    interestPaidCents: debtService.interestCents,
+    principalPaidCents: debtService.principalCents,
+    otherFinancingCostsCents: debtService.otherFinancingCostsCents,
   });
   const taxCashflow = calculateTaxCashflow({
     rentalIncomeCents: actualRentCents,
     otherOperatingIncomeCents: otherIncomeCents,
     cashOperatingExpensesCents: operatingExpensesCents,
     deductibleOperatingExpensesCents,
-    interestPaidCents: interestCents,
-    principalPaidCents: principalCents,
-    depreciationCents: source.monthlyDepreciationCents,
+    interestPaidCents: debtService.interestCents,
+    principalPaidCents: debtService.principalCents,
+    otherFinancingCostsCents: debtService.otherFinancingCostsCents,
+    depreciationCents:
+      propertyId === undefined ? source.monthlyDepreciationCents : 0,
     taxRate: source.taxRate,
     lossOffsetAllowed: true,
   });
 
   return {
-    targetRentCents: targetRentForMonth(source, month),
+    targetRentCents: targetRentForMonth(source, month, propertyId),
     actualRentCents,
     incomeCents,
     totalExpensesCents,
     operatingExpensesCents,
     operatingCashflowCents,
+    debtServiceCents: debtService.totalCents,
+    debtServiceMode: debtService.mode,
     financingCashflowCents,
     afterTaxCents: taxCashflow.cashflowAfterEstimatedTaxCents,
     estimatedTaxCents: taxCashflow.estimatedTax.estimatedTaxCents,
+  };
+}
+
+function scopeToDashboardProperties(source: DashboardSource): DashboardSource {
+  const propertyIds = new Set(
+    source.properties.map((property) => property.id),
+  );
+  const units = source.units.filter((unit) =>
+    propertyIds.has(unit.propertyId),
+  );
+  const unitIds = new Set(units.map((unit) => unit.id));
+  const leases = source.leases.filter((lease) =>
+    unitIds.has(lease.unitId),
+  );
+  const leaseIds = new Set(leases.map((lease) => lease.id));
+  const rentClaims = source.rentClaims.filter((claim) =>
+    leaseIds.has(claim.leaseId),
+  );
+  const claimIds = new Set(rentClaims.map((claim) => claim.id));
+  const loans = source.loans.filter((loan) =>
+    propertyIds.has(loan.propertyId) &&
+    ["active", "refinancing_due"].includes(loan.status),
+  );
+  const loanIds = new Set(loans.map((loan) => loan.id));
+
+  return {
+    ...source,
+    units,
+    leases,
+    rentClaims,
+    rentPayments: source.rentPayments.filter(
+      (payment) =>
+        payment.rentClaimId !== null &&
+        claimIds.has(payment.rentClaimId),
+    ),
+    income: source.income.filter(
+      (entry) =>
+        entry.propertyId !== null && propertyIds.has(entry.propertyId),
+    ),
+    expenses: source.expenses.filter(
+      (expense) =>
+        expense.propertyId !== null &&
+        propertyIds.has(expense.propertyId),
+    ),
+    loans,
+    loanPayments: source.loanPayments.filter((payment) =>
+      loanIds.has(payment.loanId),
+    ),
+    tasks: source.tasks.filter(
+      (task) =>
+        task.propertyId === null || propertyIds.has(task.propertyId),
+    ),
+    renovations: source.renovations.filter((renovation) =>
+      propertyIds.has(renovation.propertyId),
+    ),
   };
 }
 
@@ -353,6 +608,8 @@ function buildPropertyPoints(
   source: DashboardSource,
 ): DashboardPropertyPoint[] {
   const loansAvailable = source.loansAvailable !== false;
+  const currentMonth = monthKey(source.asOfDate);
+  const currentYear = source.asOfDate.slice(0, 4);
   const unitsByProperty = new Map<string, DashboardUnitSource[]>();
   for (const unit of source.units) {
     const list = unitsByProperty.get(unit.propertyId) ?? [];
@@ -371,10 +628,25 @@ function buildPropertyPoints(
     const activeLeases = source.leases.filter(
       (lease) =>
         unitProperty.get(lease.unitId) === property.id &&
-        isLeaseInMonth(lease, monthKey(source.asOfDate)),
+        isLeaseInMonth(lease, currentMonth),
     );
-    const monthlyTargetColdRentCents = sumCents(
+    const monthlyContractColdRentCents = sumCents(
       activeLeases.map((lease) => lease.coldRentCents),
+    );
+    const monthlyMarketColdRentCents = sumCents(
+      units.map((unit) => unit.targetColdRentCents),
+    );
+    const financials = monthFinancials(source, currentMonth, property.id);
+    const currentYearExpensesCents = sumAmounts(
+      source.expenses.filter(
+        (expense) =>
+          expense.propertyId === property.id &&
+          expense.cashEffective &&
+          expense.entryDate.slice(0, 4) === currentYear &&
+          expense.entryDate <= source.asOfDate &&
+          !expense.isInterest &&
+          !expense.isPrincipal,
+      ),
     );
     const propertyLoans = source.loans.filter(
       (loan) => loan.propertyId === property.id,
@@ -395,12 +667,23 @@ function buildPropertyPoints(
       name: property.name,
       marketValueCents,
       equityCents,
-      monthlyTargetColdRentCents,
+      monthlyContractColdRentCents,
+      monthlyMarketColdRentCents,
+      // Compatibility alias for existing consumers; "target" means market rent.
+      monthlyTargetColdRentCents: monthlyMarketColdRentCents,
+      monthlyRentPaymentsCents: financials.actualRentCents,
+      monthlyIncomeCents: financials.incomeCents,
+      monthlyCashExpensesCents: financials.operatingExpensesCents,
+      monthlyDebtServiceCents: financials.debtServiceCents,
+      debtServiceMode: financials.debtServiceMode,
+      monthlyCashflowAfterFinancingCents:
+        financials.financingCashflowCents,
+      currentYearExpensesCents,
       grossYield:
         property.purchasePriceCents === null
           ? null
           : calculateGrossRentalYield({
-              annualColdRentCents: monthlyTargetColdRentCents * 12,
+              annualColdRentCents: monthlyContractColdRentCents * 12,
               purchasePriceCents: property.purchasePriceCents,
             }),
       vacancyRate: calculateVacancyRateByUnits({
@@ -524,8 +807,9 @@ function buildActions(
 }
 
 export function buildDashboardSnapshot(
-  source: DashboardSource,
+  inputSource: DashboardSource,
 ): DashboardSnapshot {
+  const source = scopeToDashboardProperties(inputSource);
   const loansAvailable = source.loansAvailable !== false;
   const currentMonth = monthKey(source.asOfDate);
   const months = previousMonths(source.asOfDate, 12).map((month) => {
@@ -538,6 +822,8 @@ export function buildDashboardSnapshot(
       incomeCents: financials.incomeCents,
       operatingExpensesCents: financials.operatingExpensesCents,
       operatingCashflowCents: financials.operatingCashflowCents,
+      debtServiceCents: financials.debtServiceCents,
+      debtServiceMode: financials.debtServiceMode,
       financingCashflowCents: financials.financingCashflowCents,
       afterTaxCents: financials.afterTaxCents,
     };
@@ -599,6 +885,49 @@ export function buildDashboardSnapshot(
   leaseHorizon.setUTCFullYear(leaseHorizon.getUTCFullYear() + 1);
   const leaseHorizonDate = leaseHorizon.toISOString().slice(0, 10);
   const properties = buildPropertyPoints(source);
+  const monthlyContractColdRentCents = sumCents(
+    properties.map((property) => property.monthlyContractColdRentCents),
+  );
+  const monthlyMarketColdRentCents = sumCents(
+    properties.map((property) => property.monthlyMarketColdRentCents),
+  );
+  const monthlyActualRentCents = sumCents(
+    properties.map((property) => property.monthlyRentPaymentsCents),
+  );
+  const monthlyIncomeCents = sumCents(
+    properties.map((property) => property.monthlyIncomeCents),
+  );
+  const monthlyCashExpensesCents = sumCents(
+    properties.map((property) => property.monthlyCashExpensesCents),
+  );
+  const monthlyDebtServiceCents = sumCents(
+    properties.map((property) => property.monthlyDebtServiceCents),
+  );
+  const propertyDebtServiceModes = new Set(
+    properties
+      .map((property) => property.debtServiceMode)
+      .filter((mode) => mode !== "none"),
+  );
+  const debtServiceMode: DebtServiceMode =
+    propertyDebtServiceModes.has("mixed") ||
+    (propertyDebtServiceModes.has("actual") &&
+      propertyDebtServiceModes.has("forecast"))
+      ? "mixed"
+      : propertyDebtServiceModes.has("actual")
+        ? "actual"
+        : propertyDebtServiceModes.has("forecast")
+          ? "forecast"
+          : "none";
+  const operatingCashflowCents =
+    monthlyIncomeCents - monthlyCashExpensesCents;
+  const financingCashflowCents = properties.reduce(
+    (total, property) =>
+      total + property.monthlyCashflowAfterFinancingCents,
+    0,
+  );
+  const currentYearExpensesCents = sumCents(
+    properties.map((property) => property.currentYearExpensesCents),
+  );
 
   return {
     mode: source.mode,
@@ -616,12 +945,19 @@ export function buildDashboardSnapshot(
         vacantUnits,
         totalUnits: source.units.length,
       }),
+      monthlyContractColdRentCents,
+      monthlyMarketColdRentCents,
       monthlyTargetRentCents: current.targetRentCents ?? 0,
-      monthlyActualRentCents: current.actualRentCents,
+      monthlyActualRentCents,
       openRentCents: sumCents(openClaims.map((claim) => claim.openCents)),
-      monthlyExpensesCents: current.totalExpensesCents,
-      operatingCashflowCents: current.operatingCashflowCents,
-      financingCashflowCents: current.financingCashflowCents,
+      monthlyCashExpensesCents,
+      monthlyDebtServiceCents,
+      debtServiceMode,
+      currentYearExpensesCents,
+      monthlyExpensesCents:
+        monthlyCashExpensesCents + monthlyDebtServiceCents,
+      operatingCashflowCents,
+      financingCashflowCents,
       estimatedAfterTaxCents: current.afterTaxCents,
       loansAvailable,
       loanBalanceCents,
@@ -675,10 +1011,11 @@ export function buildDashboardSnapshot(
     openClaims,
     actions: buildActions(source, openClaims),
     assumptions: [
-      "Sollmiete: vertragliche Monatsmiete einschließlich Nebenkosten, Stellplatz und weiterer Mietbestandteile; historische Live-Werte stammen aus Mietforderungen.",
-      "Ist-Miete: bestätigte Mietzahlungen plus eindeutig abgrenzbare, als Miete kategorisierte Einnahmen. Bei gemischten Quellen werden stabile Banktransaktions-IDs verwendet; unverknüpfte Einträge werden konservativ nicht zusätzlich gezählt statt über Betrag oder Datum zu raten.",
-      "Operativer Cashflow: gebuchte Einnahmen abzüglich liquiditätswirksamer Betriebsausgaben; Zins, Tilgung und aktivierbare Investitionen sind getrennt.",
-      "Cashflow nach Finanzierung: operativer Cashflow abzüglich Zins und Tilgung. Geplante Sanierungen sind darin noch nicht enthalten.",
+      "Vertrags-/IST-Kaltmiete (mtl.): Summe der Kaltmieten aus den im Monat aktiven Mietverhältnissen.",
+      "Markt-/SOLL-Kaltmiete (mtl.): Summe der je Einheit hinterlegten Ziel-Kaltmiete; sie ist von Mietforderungen einschließlich Nebenkosten klar getrennt.",
+      "Zahlungseingänge: bestätigte Mietzahlungen plus als Miete kategorisierte Einnahmen. Nur identische, stabile Banktransaktions-IDs werden dedupliziert; Einträge ohne Banktransaktions-ID bleiben enthalten.",
+      "Liquiditätswirksame Ausgaben umfassen laufende Ausgaben und Investitionen. Zins und Tilgung werden separat als Schuldendienst ausgewiesen.",
+      "Schuldendienst im laufenden Monat: bestätigte Darlehenszahlungen; fehlt eine Zahlung zu einem aktiven Darlehen, wird dessen Monatsrate ausdrücklich als Forecast verwendet. Als Zins oder Tilgung markierte Ausgaben werden dabei nicht nochmals abgezogen.",
       source.taxRate === null
         ? "Nachsteuer-Cashflow wird erst mit aktivierter persönlicher Steuerannahme berechnet."
         : "Steuerwirkung: modellierte Hochrechnung mit der hinterlegten Grenzsteuerannahme und monatlicher AfA; unverbindlich und keine Steuerberatung.",

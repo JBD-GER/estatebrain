@@ -13,9 +13,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Building2,
+  Calculator,
   Check,
-  Database,
   Euro,
+  FileCheck2,
   Landmark,
   Loader2,
   Plus,
@@ -23,17 +24,26 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  calculateAcquisitionAllocation,
+  propertySupportsMultipleUnits,
+  propertyTypeOptions,
+} from "@/lib/domain/property";
+import {
+  calculateGermanRentalTaxEstimate2026,
+  recommendedBuildingDepreciationRate,
+} from "@/lib/domain/tax";
+import {
   nextOnboardingUnitNumber,
   onboardingSchema,
   type OnboardingInput,
 } from "@/lib/validation/onboarding";
 import {
-  completeEmptyOnboardingAction,
   completeOnboardingAction,
   type OnboardingResult,
 } from "@/app/onboarding/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -45,7 +55,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   legacyOnboardingDraftKey,
   onboardingDraftKey,
@@ -56,13 +65,14 @@ import { cn } from "@/lib/utils";
 
 const steps = [
   { title: "Organisation", icon: Landmark },
-  { title: "Steuerannahmen", icon: Euro },
-  { title: "Erste Immobilie", icon: Building2 },
-  { title: "Einheiten", icon: Building2 },
-  { title: "Daten & Start", icon: Database },
+  { title: "Immobilie & Kauf", icon: Building2 },
+  { title: "Mieten & Einheiten", icon: Euro },
+  { title: "Finanzierung", icon: Landmark },
+  { title: "Steuer", icon: Calculator },
+  { title: "Zusammenfassung", icon: FileCheck2 },
 ];
 
-const currentYear = new Date().getFullYear();
+const currentYear = 2026;
 
 const defaults: OnboardingInput = {
   organization: {
@@ -74,48 +84,69 @@ const defaults: OnboardingInput = {
     currency: "EUR",
     taxYear: currentYear,
   },
-  tax: {
-    calculationsEnabled: true,
-    marginalTaxRate: 30,
-    effectiveTaxRate: null,
-    churchTax: false,
-    solidaritySurcharge: false,
-    taxableIncome: null,
-    filingStatus: "single",
-  },
   property: {
+    propertyMode: "existing",
     name: "",
     street: "",
     postalCode: "",
     city: "",
-    propertyType: "apartment_building",
+    propertyType: "condominium",
+    constructionYear: 1990,
     purchaseDate: "",
     purchasePrice: 0,
-    acquisitionCosts: 0,
-    landValue: 0,
-    buildingValue: 0,
-    totalArea: 0,
-    currentFinancing: 0,
-    marketValue: 0,
-    expectedMonthlyRent: 0,
+    landArea: 0,
+    standardLandValue: 0,
+    landOwnershipSharePercent: 100,
+    realEstateTransferTaxRate: 6,
+    brokerFee: 0,
+    notaryFee: 0,
+    landRegistryFee: 0,
+    otherAcquisitionCosts: 0,
+    totalArea: 50,
+    depreciationMode: "calculated",
+    existingAnnualDepreciation: null,
   },
   units: [
     {
-      unitNumber: "Wohnung 1",
+      unitNumber: "Mietfläche",
       floor: "",
       area: 50,
       rooms: 2,
-      baseRent: 0,
+      contractColdRent: 0,
+      targetColdRent: 0,
       serviceCharge: 0,
+      ancillaryChargeType: "advance",
       parkingRent: 0,
       leaseStart: "",
       status: "occupied",
     },
   ],
+  financing: {
+    enabled: false,
+    loanType: "annuity",
+    lenderName: "",
+    originalPrincipal: 0,
+    currentBalance: 0,
+    nominalInterestRate: 0,
+    initialRepaymentRate: 2,
+    monthlyPayment: 0,
+    disbursedOn: "",
+    fixedRateUntil: "",
+  },
+  tax: {
+    calculationMode: "automatic",
+    manualEffectiveTaxRate: null,
+    otherTaxableIncome: null,
+    filingStatus: "single",
+    rentalIncomeComplete: false,
+    churchTax: false,
+    solidaritySurcharge: false,
+  },
   importMode: "none",
+  confirmation: false,
 };
 
-const stepFields: Array<Array<keyof OnboardingInput | `organization.${string}` | `tax.${string}` | `property.${string}` | `units.${number}.${string}`>> = [
+const stepFields: string[][] = [
   [
     "organization.name",
     "organization.organizationType",
@@ -124,25 +155,29 @@ const stepFields: Array<Array<keyof OnboardingInput | `organization.${string}` |
     "organization.city",
     "organization.taxYear",
   ],
-  [
-    "tax.calculationsEnabled",
-    "tax.marginalTaxRate",
-    "tax.effectiveTaxRate",
-    "tax.taxableIncome",
-    "tax.filingStatus",
-  ],
-  [
-    "property.name",
-    "property.street",
-    "property.postalCode",
-    "property.city",
-    "property.propertyType",
-    "property.purchasePrice",
-    "property.totalArea",
-  ],
+  ["property"],
   ["units"],
-  ["importMode"],
+  ["financing"],
+  ["tax"],
+  ["confirmation"],
 ];
+
+const currencyFormatter = new Intl.NumberFormat("de-DE", {
+  style: "currency",
+  currency: "EUR",
+  maximumFractionDigits: 2,
+});
+
+function formatCents(value: number | null | undefined) {
+  return currencyFormatter.format((value ?? 0) / 100);
+}
+
+function formatRate(value: number | null | undefined) {
+  return `${((value ?? 0) * 100).toLocaleString("de-DE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} %`;
+}
 
 function FieldError({ message }: { message?: string }) {
   return message ? (
@@ -151,6 +186,52 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function MoneyField({
+  id,
+  label,
+  registration,
+  error,
+  nullable = false,
+  disabled = false,
+}: {
+  id: string;
+  label: string;
+  registration: ReturnType<typeof useForm<OnboardingInput>>["register"];
+  error?: string;
+  nullable?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative">
+        <Input
+          id={id}
+          type="number"
+          min="0"
+          step="0.01"
+          disabled={disabled}
+          className="pr-10"
+          aria-invalid={Boolean(error)}
+          {...registration(
+            id as never,
+            nullable
+              ? {
+                  setValueAs: (value) =>
+                    value === "" ? null : Number(value),
+                }
+              : { valueAsNumber: true },
+          )}
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+          €
+        </span>
+      </div>
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+function PercentageField({
   id,
   label,
   registration,
@@ -171,8 +252,10 @@ function MoneyField({
           id={id}
           type="number"
           min="0"
+          max="100"
           step="0.01"
           className="pr-10"
+          aria-invalid={Boolean(error)}
           {...registration(
             id as never,
             nullable
@@ -184,10 +267,30 @@ function MoneyField({
           )}
         />
         <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-          €
+          %
         </span>
       </div>
       <FieldError message={error} />
+    </div>
+  );
+}
+
+function SummaryValue({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-xl border bg-background p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -224,6 +327,137 @@ export function OnboardingWizard({
     name: "units",
   });
   const watchedValues = useWatch({ control: form.control });
+  const propertyMode = watchedValues.property?.propertyMode ?? "existing";
+  const propertyType =
+    watchedValues.property?.propertyType ?? "condominium";
+  const supportsMultipleUnits = propertySupportsMultipleUnits(propertyType);
+
+  const acquisition = (() => {
+    const property = watchedValues.property;
+    if (!property) return null;
+    try {
+      return calculateAcquisitionAllocation({
+        purchasePriceCents: Math.round((property.purchasePrice ?? 0) * 100),
+        landAreaSquareMeters: property.landArea ?? 0,
+        standardLandValueCentsPerSquareMeter: Math.round(
+          (property.standardLandValue ?? 0) * 100,
+        ),
+        landOwnershipShare:
+          (property.landOwnershipSharePercent ?? 100) / 100,
+        realEstateTransferTaxRate:
+          (property.realEstateTransferTaxRate ?? 0) / 100,
+        brokerFeeCents: Math.round((property.brokerFee ?? 0) * 100),
+        notaryAndLandRegistryFeeCents: Math.round(
+          ((property.notaryFee ?? 0) + (property.landRegistryFee ?? 0)) *
+            100,
+        ),
+        otherAcquisitionCostsCents: Math.round(
+          (property.otherAcquisitionCosts ?? 0) * 100,
+        ),
+      });
+    } catch {
+      return null;
+    }
+  })();
+
+  const annualContractRentCents = Math.round(
+    (watchedValues.units ?? []).reduce(
+      (sum, unit) =>
+        sum +
+        (unit?.status === "occupied"
+          ? (unit.contractColdRent ?? 0)
+          : 0),
+      0,
+    ) *
+      12 *
+      100,
+  );
+  const annualTargetRentCents = Math.round(
+    (watchedValues.units ?? []).reduce(
+      (sum, unit) =>
+        sum + (unit?.targetColdRent ?? 0),
+      0,
+    ) *
+      12 *
+      100,
+  );
+  const annualParkingRentCents = Math.round(
+    (watchedValues.units ?? []).reduce(
+      (sum, unit) =>
+        sum +
+        (propertyMode === "scenario" || unit?.status === "occupied"
+          ? (unit?.parkingRent ?? 0)
+          : 0),
+      0,
+    ) *
+      12 *
+      100,
+  );
+  const annualAncillaryIncomeCents = Math.round(
+    (watchedValues.units ?? []).reduce(
+      (sum, unit) =>
+        sum +
+        (propertyMode === "existing" &&
+        unit?.status === "occupied" &&
+        unit.ancillaryChargeType !== "none"
+          ? (unit.serviceCharge ?? 0)
+          : 0),
+      0,
+    ) *
+      12 *
+      100,
+  );
+  const calculatedDepreciationCents = (() => {
+    const property = watchedValues.property;
+    if (!property || !acquisition) return 0;
+    if (
+      property.propertyMode === "existing" &&
+      property.depreciationMode === "tax_return"
+    ) {
+      return Math.round((property.existingAnnualDepreciation ?? 0) * 100);
+    }
+    try {
+      return Math.round(
+        acquisition.buildingValueCents *
+          recommendedBuildingDepreciationRate(
+            property.propertyType ?? "condominium",
+            property.constructionYear ?? 0,
+          ),
+      );
+    } catch {
+      return 0;
+    }
+  })();
+  const annualInterestCents = Math.round(
+    (watchedValues.financing?.enabled
+      ? (watchedValues.financing.currentBalance ?? 0) *
+        ((watchedValues.financing.nominalInterestRate ?? 0) / 100)
+      : 0) * 100,
+  );
+  const taxableRentalResultCents =
+    propertyMode === "existing"
+      ? annualContractRentCents +
+        annualAncillaryIncomeCents +
+        annualParkingRentCents -
+        annualInterestCents -
+        calculatedDepreciationCents
+      : 0;
+  const automaticTaxEstimate = (() => {
+    if (
+      watchedValues.tax?.calculationMode !== "automatic" ||
+      watchedValues.tax.otherTaxableIncome == null
+    ) {
+      return null;
+    }
+    return calculateGermanRentalTaxEstimate2026({
+      otherTaxableIncomeCents: Math.round(
+        watchedValues.tax.otherTaxableIncome * 100,
+      ),
+      taxableRentalResultCents,
+      assessmentType:
+        watchedValues.tax.filingStatus === "joint" ? "joint" : "individual",
+    });
+  })();
 
   useEffect(() => {
     let restoredDraft: ReturnType<typeof parseOnboardingDraft> = null;
@@ -233,9 +467,7 @@ export function OnboardingWizard({
         window.localStorage.getItem(storageKey),
         steps.length,
       );
-      if (!restoredDraft) {
-        window.localStorage.removeItem(storageKey);
-      }
+      if (!restoredDraft) window.localStorage.removeItem(storageKey);
     } catch {
       // Storage can be unavailable in private or restricted browser contexts.
     }
@@ -263,11 +495,9 @@ export function OnboardingWizard({
         }),
       );
     } catch {
-      // The wizard remains usable even when persistent browser storage is off.
+      // The wizard remains usable without persistent browser storage.
     }
   }, [hydrated, step, storageKey, watchedValues]);
-
-  const progress = ((step + 1) / steps.length) * 100;
 
   async function nextStep() {
     const valid = await form.trigger(stepFields[step] as never, {
@@ -276,20 +506,15 @@ export function OnboardingWizard({
     if (valid) setStep((value) => Math.min(value + 1, steps.length - 1));
   }
 
-  function handleSuccess(
-    result: OnboardingResult,
-    clearDraft = true,
-  ) {
+  function handleSuccess(result: OnboardingResult) {
     if (!result.success) {
       toast.error(result.message);
       return;
     }
-    if (clearDraft) {
-      try {
-        window.localStorage.removeItem(storageKey);
-      } catch {
-        // A completed setup must not depend on browser storage access.
-      }
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      // Completion must not depend on browser storage access.
     }
     toast.success(result.message);
     router.replace("/app");
@@ -298,43 +523,51 @@ export function OnboardingWizard({
 
   function finish(values: OnboardingInput) {
     startTransition(async () => {
-      const result = await completeOnboardingAction(values);
-      handleSuccess(result);
-    });
-  }
-
-  async function startEmpty() {
-    const valid = await form.trigger(stepFields[0] as never, {
-      shouldFocus: true,
-    });
-    if (!valid) return;
-
-    const values = form.getValues();
-    startTransition(async () => {
-      const result = await completeEmptyOnboardingAction({
-        organization: values.organization,
-        tax: values.tax,
-      });
-      handleSuccess(result, false);
+      handleSuccess(await completeOnboardingAction(values));
     });
   }
 
   function handleInvalid(errors: FieldErrors<OnboardingInput>) {
     const invalidStep = errors.organization
       ? 0
-      : errors.tax
+      : errors.property
         ? 1
-        : errors.property
+        : errors.units
           ? 2
-          : errors.units
+          : errors.financing
             ? 3
-            : 4;
+            : errors.tax
+              ? 4
+              : 5;
     setStep(invalidStep);
     toast.error("Bitte prüfe die markierten Angaben.");
   }
 
+  function setPropertyMode(mode: OnboardingInput["property"]["propertyMode"]) {
+    form.setValue("property.propertyMode", mode, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    if (mode === "scenario") {
+      form.getValues("units").forEach((_, index) => {
+        form.setValue(`units.${index}.status`, "vacant", {
+          shouldDirty: true,
+        });
+        form.setValue(`units.${index}.contractColdRent`, 0, {
+          shouldDirty: true,
+        });
+        form.setValue(`units.${index}.leaseStart`, "", {
+          shouldDirty: true,
+        });
+      });
+    }
+  }
+
+  const progress = ((step + 1) / steps.length) * 100;
+  const propertyErrors = form.formState.errors.property;
+
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="mx-auto w-full max-w-6xl">
       <div className="mb-8">
         <p className="text-sm font-medium text-primary">
           Willkommen{fullName ? `, ${fullName.split(" ")[0]}` : ""}.
@@ -344,9 +577,10 @@ export function OnboardingWizard({
             ? "Setzen wir deine Portfolio-Einrichtung fort"
             : "Richten wir dein Portfolio ein"}
         </h1>
-        <p className="mt-3 max-w-2xl text-muted-foreground">
-          Du kannst alle Angaben später ändern. Steuerwerte sind ausschließlich
-          optionale Annahmen für unverbindliche Modellrechnungen.
+        <p className="mt-3 max-w-3xl text-muted-foreground">
+          Erfasse eine echte Bestandsimmobilie oder ein klar getrenntes
+          Szenario. Geldwerte sind mit „mtl.“ für monatlich und „p. a.“ für pro
+          Jahr gekennzeichnet.
         </p>
       </div>
 
@@ -358,7 +592,7 @@ export function OnboardingWizard({
           <span className="text-muted-foreground">{steps[step]?.title}</span>
         </div>
         <Progress value={progress} />
-        <ol className="mt-4 hidden grid-cols-5 gap-2 md:grid">
+        <ol className="mt-4 hidden grid-cols-6 gap-2 lg:grid">
           {steps.map((item, index) => (
             <li
               key={item.title}
@@ -369,7 +603,7 @@ export function OnboardingWizard({
             >
               <span
                 className={cn(
-                  "grid size-6 place-items-center rounded-full border",
+                  "grid size-6 shrink-0 place-items-center rounded-full border",
                   index < step
                     ? "border-primary bg-primary text-primary-foreground"
                     : index === step
@@ -401,7 +635,7 @@ export function OnboardingWizard({
                   <Label htmlFor="organization.name">Name der Organisation</Label>
                   <Input
                     id="organization.name"
-                    placeholder="z. B. Immobilienverwaltung Mustermann"
+                    placeholder="z. B. Immobilienportfolio Mustermann"
                     aria-invalid={Boolean(
                       form.formState.errors.organization?.name,
                     )}
@@ -418,7 +652,9 @@ export function OnboardingWizard({
                       watchedValues.organization?.organizationType ?? "private"
                     }
                     onValueChange={(value: "private" | "company") =>
-                      form.setValue("organization.organizationType", value)
+                      form.setValue("organization.organizationType", value, {
+                        shouldDirty: true,
+                      })
                     }
                   >
                     <SelectTrigger>
@@ -435,6 +671,7 @@ export function OnboardingWizard({
                   <Input
                     id="organization.taxYear"
                     type="number"
+                    min="2026"
                     aria-invalid={Boolean(
                       form.formState.errors.organization?.taxYear,
                     )}
@@ -453,13 +690,7 @@ export function OnboardingWizard({
                   <Input
                     id="organization.street"
                     autoComplete="street-address"
-                    aria-invalid={Boolean(
-                      form.formState.errors.organization?.street,
-                    )}
                     {...form.register("organization.street")}
-                  />
-                  <FieldError
-                    message={form.formState.errors.organization?.street?.message}
                   />
                 </div>
                 <div className="space-y-2">
@@ -467,15 +698,7 @@ export function OnboardingWizard({
                   <Input
                     id="organization.postalCode"
                     autoComplete="postal-code"
-                    aria-invalid={Boolean(
-                      form.formState.errors.organization?.postalCode,
-                    )}
                     {...form.register("organization.postalCode")}
-                  />
-                  <FieldError
-                    message={
-                      form.formState.errors.organization?.postalCode?.message
-                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -483,592 +706,1063 @@ export function OnboardingWizard({
                   <Input
                     id="organization.city"
                     autoComplete="address-level2"
-                    aria-invalid={Boolean(
-                      form.formState.errors.organization?.city,
-                    )}
                     {...form.register("organization.city")}
                   />
-                  <FieldError
-                    message={form.formState.errors.organization?.city?.message}
-                  />
                 </div>
-                {!resumeMode ? (
-                  <div className="flex flex-col gap-4 rounded-xl border border-dashed p-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-medium">Noch keine Immobiliendaten?</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Lege nur die Organisation an und starte mit einem
-                        vollständig leeren Dashboard. Die geführte Einrichtung
-                        kannst du dort jederzeit fortsetzen.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={startEmpty}
-                      disabled={pending}
-                    >
-                      {pending ? (
-                        <Loader2 className="animate-spin" aria-hidden="true" />
-                      ) : (
-                        <ArrowRight aria-hidden="true" />
-                      )}
-                      Leer starten
-                    </Button>
-                  </div>
-                ) : null}
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground sm:col-span-2">
+                  Die Einrichtung wird erst nach der Zusammenfassung gespeichert.
+                  Es gibt keinen vorzeitigen Sprung in ein unvollständiges
+                  Dashboard.
+                </div>
               </div>
             ) : null}
 
             {step === 1 ? (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between rounded-xl border p-4">
-                  <div>
-                    <Label htmlFor="tax-enabled">
-                      Steuerliche Modellrechnung aktivieren
-                    </Label>
+              <div className="space-y-7">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setPropertyMode("existing")}
+                    className={cn(
+                      "rounded-xl border p-5 text-left transition-colors",
+                      propertyMode === "existing"
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/15"
+                        : "hover:bg-muted/50",
+                    )}
+                  >
+                    <Building2 className="size-6 text-primary" />
+                    <p className="mt-3 font-medium">Bestandsimmobilie</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Alle Annahmen bleiben editierbar und unverbindlich.
+                      Reales Vermögen mit Mietverhältnissen, Forderungen,
+                      Zahlungen, Steuer und Cashflow.
                     </p>
-                  </div>
-                  <Switch
-                    id="tax-enabled"
-                    checked={watchedValues.tax?.calculationsEnabled ?? true}
-                    onCheckedChange={(checked) =>
-                      form.setValue("tax.calculationsEnabled", checked)
-                    }
-                  />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPropertyMode("scenario")}
+                    className={cn(
+                      "rounded-xl border p-5 text-left transition-colors",
+                      propertyMode === "scenario"
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/15"
+                        : "hover:bg-muted/50",
+                    )}
+                  >
+                    <Calculator className="size-6 text-primary" />
+                    <p className="mt-3 font-medium">Fiktive Immobilie</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Optionales Szenario. Es erzeugt keine echten Einnahmen
+                      und fließt nicht in den Ist-Cashflow ein.
+                    </p>
+                  </button>
                 </div>
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="tax.marginalTaxRate">
-                      Grenzsteuersatz
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="tax.marginalTaxRate"
-                        type="number"
-                        min="0"
-                        max="60"
-                        step="0.1"
-                        className="pr-10"
-                        aria-invalid={Boolean(
-                          form.formState.errors.tax?.marginalTaxRate,
-                        )}
-                        {...form.register("tax.marginalTaxRate", {
-                          setValueAs: (value) =>
-                            value === "" ? null : Number(value),
-                        })}
-                      />
-                      <span className="absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-                        %
-                      </span>
-                    </div>
-                    <FieldError
-                      message={
-                        form.formState.errors.tax?.marginalTaxRate?.message
-                      }
+
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="property.name">Bezeichnung</Label>
+                    <Input
+                      id="property.name"
+                      placeholder="z. B. ETW Lindenstraße"
+                      aria-invalid={Boolean(propertyErrors?.name)}
+                      {...form.register("property.name")}
                     />
+                    <FieldError message={propertyErrors?.name?.message} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="tax.effectiveTaxRate">
-                      Effektiver Steuersatz (alternativ)
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="tax.effectiveTaxRate"
-                        type="number"
-                        min="0"
-                        max="60"
-                        step="0.1"
-                        className="pr-10"
-                        aria-invalid={Boolean(
-                          form.formState.errors.tax?.effectiveTaxRate,
-                        )}
-                        {...form.register("tax.effectiveTaxRate", {
-                          setValueAs: (value) =>
-                            value === "" ? null : Number(value),
-                        })}
-                      />
-                      <span className="absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-                        %
-                      </span>
-                    </div>
-                    <FieldError
-                      message={
-                        form.formState.errors.tax?.effectiveTaxRate?.message
-                      }
-                    />
-                  </div>
-                  <MoneyField
-                    id="tax.taxableIncome"
-                    label="Zu versteuerndes Einkommen (freiwillig)"
-                    registration={form.register}
-                    error={form.formState.errors.tax?.taxableIncome?.message}
-                    nullable
-                  />
-                  <div className="space-y-2">
-                    <Label>Betrachtung</Label>
+                    <Label>Immobilientyp</Label>
                     <Select
-                      value={watchedValues.tax?.filingStatus ?? "single"}
-                      onValueChange={(value: "single" | "joint") =>
-                        form.setValue("tax.filingStatus", value)
-                      }
+                      value={propertyType}
+                      onValueChange={(
+                        value: OnboardingInput["property"]["propertyType"],
+                      ) => {
+                        if (
+                          !propertySupportsMultipleUnits(value) &&
+                          fields.length > 1
+                        ) {
+                          toast.error(
+                            "Bitte entferne zuerst die zusätzlichen Einheiten.",
+                          );
+                          return;
+                        }
+                        form.setValue("property.propertyType", value, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                        if (!propertySupportsMultipleUnits(value)) {
+                          form.setValue("units.0.unitNumber", "Mietfläche", {
+                            shouldDirty: true,
+                          });
+                        }
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="single">Einzeln</SelectItem>
-                        <SelectItem value="joint">Gemeinsam</SelectItem>
+                        {propertyTypeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.abbreviation} · {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="property.street">Straße und Hausnummer</Label>
+                    <Input
+                      id="property.street"
+                      aria-invalid={Boolean(propertyErrors?.street)}
+                      {...form.register("property.street")}
+                    />
+                    <FieldError message={propertyErrors?.street?.message} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="property.postalCode">Postleitzahl</Label>
+                    <Input
+                      id="property.postalCode"
+                      aria-invalid={Boolean(propertyErrors?.postalCode)}
+                      {...form.register("property.postalCode")}
+                    />
+                    <FieldError message={propertyErrors?.postalCode?.message} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="property.city">Ort</Label>
+                    <Input
+                      id="property.city"
+                      aria-invalid={Boolean(propertyErrors?.city)}
+                      {...form.register("property.city")}
+                    />
+                    <FieldError message={propertyErrors?.city?.message} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="property.constructionYear">Baujahr</Label>
+                    <Input
+                      id="property.constructionYear"
+                      type="number"
+                      min="1000"
+                      max="2100"
+                      aria-invalid={Boolean(propertyErrors?.constructionYear)}
+                      {...form.register("property.constructionYear", {
+                        valueAsNumber: true,
+                      })}
+                    />
+                    <FieldError
+                      message={propertyErrors?.constructionYear?.message}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="property.purchaseDate">Kaufdatum</Label>
+                    <Input
+                      id="property.purchaseDate"
+                      type="date"
+                      aria-invalid={Boolean(propertyErrors?.purchaseDate)}
+                      {...form.register("property.purchaseDate")}
+                    />
+                    <FieldError message={propertyErrors?.purchaseDate?.message} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="property.totalArea">Gesamtfläche in m²</Label>
+                    <Input
+                      id="property.totalArea"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      aria-invalid={Boolean(propertyErrors?.totalArea)}
+                      {...form.register("property.totalArea", {
+                        valueAsNumber: true,
+                      })}
+                    />
+                    <FieldError message={propertyErrors?.totalArea?.message} />
+                  </div>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="flex items-center gap-3 rounded-xl border p-4 text-sm">
-                    <Checkbox
-                      checked={watchedValues.tax?.churchTax ?? false}
-                      onCheckedChange={(checked) =>
-                        form.setValue("tax.churchTax", checked === true)
+
+                <div>
+                  <h3 className="font-medium">Kaufpreis und Grundstück</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Der Grundstücksanteil wird als Bodenrichtwert ×
+                    Grundstücksfläche × Eigentumsanteil berechnet.
+                  </p>
+                  <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                    <MoneyField
+                      id="property.purchasePrice"
+                      label="Kaufpreis"
+                      registration={form.register}
+                      error={propertyErrors?.purchasePrice?.message}
+                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="property.landArea">
+                        Grundstücksfläche in m²
+                      </Label>
+                      <Input
+                        id="property.landArea"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        aria-invalid={Boolean(propertyErrors?.landArea)}
+                        {...form.register("property.landArea", {
+                          valueAsNumber: true,
+                        })}
+                      />
+                      <FieldError message={propertyErrors?.landArea?.message} />
+                    </div>
+                    <MoneyField
+                      id="property.standardLandValue"
+                      label="Bodenrichtwert je m²"
+                      registration={form.register}
+                      error={propertyErrors?.standardLandValue?.message}
+                    />
+                    <PercentageField
+                      id="property.landOwnershipSharePercent"
+                      label="Eigentumsanteil Grundstück"
+                      registration={form.register}
+                      error={
+                        propertyErrors?.landOwnershipSharePercent?.message
                       }
                     />
-                    Kirchensteuer berücksichtigen
-                  </label>
-                  <label className="flex items-center gap-3 rounded-xl border p-4 text-sm">
-                    <Checkbox
-                      checked={
-                        watchedValues.tax?.solidaritySurcharge ?? false
-                      }
-                      onCheckedChange={(checked) =>
-                        form.setValue(
-                          "tax.solidaritySurcharge",
-                          checked === true,
-                        )
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-medium">Kaufnebenkosten</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    „Grunderwerbsteuer“ ist die Steuer beim Kauf. Die jährlich
+                    erhobene Grundsteuer wird später als laufender Beleg erfasst.
+                  </p>
+                  <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+                    <PercentageField
+                      id="property.realEstateTransferTaxRate"
+                      label="Grunderwerbsteuersatz"
+                      registration={form.register}
+                      error={
+                        propertyErrors?.realEstateTransferTaxRate?.message
                       }
                     />
-                    Solidaritätszuschlag berücksichtigen
-                  </label>
+                    <MoneyField
+                      id="property.brokerFee"
+                      label="Makler"
+                      registration={form.register}
+                      error={propertyErrors?.brokerFee?.message}
+                    />
+                    <MoneyField
+                      id="property.notaryFee"
+                      label="Notar"
+                      registration={form.register}
+                      error={propertyErrors?.notaryFee?.message}
+                    />
+                    <MoneyField
+                      id="property.landRegistryFee"
+                      label="Grundbuch"
+                      registration={form.register}
+                      error={propertyErrors?.landRegistryFee?.message}
+                    />
+                    <MoneyField
+                      id="property.otherAcquisitionCosts"
+                      label="Weitere Kaufnebenkosten"
+                      registration={form.register}
+                      error={propertyErrors?.otherAcquisitionCosts?.message}
+                    />
+                  </div>
                 </div>
+
+                <div className="rounded-xl bg-muted/40 p-4">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <SummaryValue
+                      label="Grunderwerbsteuer"
+                      value={formatCents(acquisition?.realEstateTransferTaxCents)}
+                      hint="automatisch aus Kaufpreis × Satz"
+                    />
+                    <SummaryValue
+                      label="Grundstücksanteil"
+                      value={formatCents(acquisition?.landValueCents)}
+                    />
+                    <SummaryValue
+                      label="Kaufnebenkosten gesamt"
+                      value={formatCents(acquisition?.acquisitionCostsCents)}
+                    />
+                    <SummaryValue
+                      label="Gebäudeanteil / AfA-Basis"
+                      value={formatCents(acquisition?.buildingValueCents)}
+                      hint="Kaufpreis inkl. Nebenkosten minus Grundstück"
+                    />
+                  </div>
+                  {!acquisition ? (
+                    <p className="mt-3 text-sm text-destructive">
+                      Bitte prüfe Kaufpreis, Grundstücksfläche und
+                      Bodenrichtwert. Der Grundstücksanteil darf die gesamten
+                      Anschaffungskosten nicht übersteigen.
+                    </p>
+                  ) : null}
+                </div>
+
+                {propertyMode === "existing" ? (
+                  <div className="space-y-4 rounded-xl border p-4">
+                    <div>
+                      <h3 className="font-medium">Vorhandene Abschreibung</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Bei einer Bestandsimmobilie kannst du die AfA aus der
+                        letzten Steuererklärung übernehmen. Andernfalls wird
+                        eine unverbindliche lineare AfA aus Baujahr und
+                        Gebäudeanteil angesetzt.
+                      </p>
+                    </div>
+                    <Select
+                      value={
+                        watchedValues.property?.depreciationMode ?? "calculated"
+                      }
+                      onValueChange={(
+                        value: "calculated" | "tax_return",
+                      ) =>
+                        form.setValue("property.depreciationMode", value, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="max-w-md">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="calculated">
+                          Automatisch modellieren
+                        </SelectItem>
+                        <SelectItem value="tax_return">
+                          Aus Steuererklärung übernehmen
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {watchedValues.property?.depreciationMode ===
+                    "tax_return" ? (
+                      <div className="max-w-sm">
+                        <MoneyField
+                          id="property.existingAnnualDepreciation"
+                          label="Vorhandene AfA (p. a.)"
+                          registration={form.register}
+                          error={
+                            propertyErrors?.existingAnnualDepreciation?.message
+                          }
+                          nullable
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-sm">
+                        Modellierte lineare AfA: {formatCents(calculatedDepreciationCents)} p. a.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
             {step === 2 ? (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="space-y-2 sm:col-span-2 lg:col-span-2">
-                  <Label htmlFor="property.name">Bezeichnung</Label>
-                  <Input
-                    id="property.name"
-                    placeholder="z. B. Mehrfamilienhaus Lindenstraße"
-                    aria-invalid={Boolean(
-                      form.formState.errors.property?.name,
-                    )}
-                    {...form.register("property.name")}
-                  />
-                  <FieldError
-                    message={form.formState.errors.property?.name?.message}
-                  />
+              <div className="space-y-5">
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                  <strong className="font-medium text-foreground">IST</strong> =
+                  Vertrags-Kaltmiete aus einem echten Mietverhältnis (mtl.).{" "}
+                  <strong className="font-medium text-foreground">SOLL</strong> =
+                  aktuelle Markt-/Ziel-Kaltmiete (mtl.). Nebenkosten werden als
+                  Vorauszahlung, Pauschale oder „keine“ eindeutig geführt.
                 </div>
-                <div className="space-y-2">
-                  <Label>Immobilientyp</Label>
-                  <Select
-                    value={
-                      watchedValues.property?.propertyType ??
-                      "apartment_building"
-                    }
-                    onValueChange={(value: OnboardingInput["property"]["propertyType"]) =>
-                      form.setValue("property.propertyType", value)
+                {fields.map((field, index) => {
+                  const unitErrors = form.formState.errors.units?.[index];
+                  const status = watchedValues.units?.[index]?.status ?? "vacant";
+                  return (
+                    <div className="rounded-xl border p-4" key={field.id}>
+                      <div className="mb-4 flex items-center justify-between">
+                        <p className="font-medium">
+                          {supportsMultipleUnits
+                            ? `Einheit ${index + 1}`
+                            : "Mietfläche"}
+                        </p>
+                        {supportsMultipleUnits && fields.length > 1 ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => remove(index)}
+                            aria-label={`Einheit ${index + 1} entfernen`}
+                          >
+                            <Trash2 className="size-4 text-destructive" />
+                          </Button>
+                        ) : null}
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="space-y-2">
+                          <Label htmlFor={`units.${index}.unitNumber`}>
+                            Bezeichnung
+                          </Label>
+                          <Input
+                            id={`units.${index}.unitNumber`}
+                            aria-invalid={Boolean(unitErrors?.unitNumber)}
+                            {...form.register(`units.${index}.unitNumber`)}
+                          />
+                          <FieldError message={unitErrors?.unitNumber?.message} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`units.${index}.floor`}>Etage</Label>
+                          <Input
+                            id={`units.${index}.floor`}
+                            {...form.register(`units.${index}.floor`)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`units.${index}.area`}>
+                            Fläche in m²
+                          </Label>
+                          <Input
+                            id={`units.${index}.area`}
+                            type="number"
+                            min="0.1"
+                            step="0.01"
+                            aria-invalid={Boolean(unitErrors?.area)}
+                            {...form.register(`units.${index}.area`, {
+                              valueAsNumber: true,
+                            })}
+                          />
+                          <FieldError message={unitErrors?.area?.message} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`units.${index}.rooms`}>Zimmer</Label>
+                          <Input
+                            id={`units.${index}.rooms`}
+                            type="number"
+                            min="0.5"
+                            step="0.5"
+                            aria-invalid={Boolean(unitErrors?.rooms)}
+                            {...form.register(`units.${index}.rooms`, {
+                              valueAsNumber: true,
+                            })}
+                          />
+                          <FieldError message={unitErrors?.rooms?.message} />
+                        </div>
+                        {propertyMode === "existing" ? (
+                          <MoneyField
+                            id={`units.${index}.contractColdRent`}
+                            label="IST / Vertrags-Kaltmiete (mtl.)"
+                            registration={form.register}
+                            error={unitErrors?.contractColdRent?.message}
+                          />
+                        ) : null}
+                        <MoneyField
+                          id={`units.${index}.targetColdRent`}
+                          label={
+                            propertyMode === "scenario"
+                              ? "Plan-/Markt-Kaltmiete (mtl.)"
+                              : "SOLL / Markt-Kaltmiete (mtl.)"
+                          }
+                          registration={form.register}
+                          error={unitErrors?.targetColdRent?.message}
+                        />
+                        <MoneyField
+                          id={`units.${index}.serviceCharge`}
+                          label="Nebenkostenbetrag (mtl.)"
+                          registration={form.register}
+                          error={unitErrors?.serviceCharge?.message}
+                          disabled={
+                            watchedValues.units?.[index]?.ancillaryChargeType ===
+                            "none"
+                          }
+                        />
+                        <div className="space-y-2">
+                          <Label>Nebenkostenart</Label>
+                          <Select
+                            value={
+                              watchedValues.units?.[index]
+                                ?.ancillaryChargeType ?? "advance"
+                            }
+                            onValueChange={(
+                              value: "advance" | "flat_rate" | "none",
+                            ) => {
+                              form.setValue(
+                                `units.${index}.ancillaryChargeType`,
+                                value,
+                                { shouldDirty: true, shouldValidate: true },
+                              );
+                              if (value === "none") {
+                                form.setValue(
+                                  `units.${index}.serviceCharge`,
+                                  0,
+                                  { shouldDirty: true },
+                                );
+                              }
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="advance">
+                                Vorauszahlung
+                              </SelectItem>
+                              <SelectItem value="flat_rate">Pauschale</SelectItem>
+                              <SelectItem value="none">Keine</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <MoneyField
+                          id={`units.${index}.parkingRent`}
+                          label="Stellplatzmiete (mtl.)"
+                          registration={form.register}
+                          error={unitErrors?.parkingRent?.message}
+                        />
+                        {propertyMode === "existing" ? (
+                          <div className="space-y-2">
+                            <Label>Mietstatus</Label>
+                            <Select
+                              value={status}
+                              onValueChange={(
+                                value: "occupied" | "vacant" | "renovation",
+                              ) => {
+                                form.setValue(`units.${index}.status`, value, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                });
+                                if (value !== "occupied") {
+                                  form.setValue(
+                                    `units.${index}.leaseStart`,
+                                    "",
+                                    { shouldDirty: true },
+                                  );
+                                  form.setValue(
+                                    `units.${index}.contractColdRent`,
+                                    0,
+                                    { shouldDirty: true },
+                                  );
+                                }
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="occupied">Vermietet</SelectItem>
+                                <SelectItem value="vacant">Leerstand</SelectItem>
+                                <SelectItem value="renovation">Sanierung</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground sm:col-span-2">
+                            Das Szenario erzeugt kein echtes Mietverhältnis und
+                            keine Mietforderung.
+                          </div>
+                        )}
+                        {propertyMode === "existing" && status === "occupied" ? (
+                          <div className="space-y-2">
+                            <Label htmlFor={`units.${index}.leaseStart`}>
+                              Mietbeginn
+                            </Label>
+                            <Input
+                              id={`units.${index}.leaseStart`}
+                              type="date"
+                              aria-invalid={Boolean(unitErrors?.leaseStart)}
+                              {...form.register(`units.${index}.leaseStart`)}
+                            />
+                            <FieldError message={unitErrors?.leaseStart?.message} />
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {supportsMultipleUnits ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={fields.length >= 100}
+                    onClick={() =>
+                      append({
+                        unitNumber: nextOnboardingUnitNumber(
+                          form.getValues("units"),
+                        ),
+                        floor: "",
+                        area: 50,
+                        rooms: 2,
+                        contractColdRent: 0,
+                        targetColdRent: 0,
+                        serviceCharge: 0,
+                        ancillaryChargeType: "advance",
+                        parkingRent: 0,
+                        leaseStart: "",
+                        status:
+                          propertyMode === "scenario" ? "vacant" : "occupied",
+                      })
                     }
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="apartment_building">
-                        Mehrfamilienhaus
-                      </SelectItem>
-                      <SelectItem value="condominium">
-                        Eigentumswohnung
-                      </SelectItem>
-                      <SelectItem value="single_family">
-                        Einfamilienhaus
-                      </SelectItem>
-                      <SelectItem value="mixed_use">
-                        Gemischt genutzt
-                      </SelectItem>
-                      <SelectItem value="commercial">Gewerbe</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="property.street">Straße und Hausnummer</Label>
-                  <Input
-                    id="property.street"
-                    aria-invalid={Boolean(
-                      form.formState.errors.property?.street,
-                    )}
-                    {...form.register("property.street")}
-                  />
-                  <FieldError
-                    message={form.formState.errors.property?.street?.message}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="property.postalCode">Postleitzahl</Label>
-                  <Input
-                    id="property.postalCode"
-                    aria-invalid={Boolean(
-                      form.formState.errors.property?.postalCode,
-                    )}
-                    {...form.register("property.postalCode")}
-                  />
-                  <FieldError
-                    message={
-                      form.formState.errors.property?.postalCode?.message
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="property.city">Ort</Label>
-                  <Input
-                    id="property.city"
-                    aria-invalid={Boolean(
-                      form.formState.errors.property?.city,
-                    )}
-                    {...form.register("property.city")}
-                  />
-                  <FieldError
-                    message={form.formState.errors.property?.city?.message}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="property.purchaseDate">Kaufdatum</Label>
-                  <Input
-                    id="property.purchaseDate"
-                    type="date"
-                    {...form.register("property.purchaseDate")}
-                  />
-                </div>
-                <MoneyField
-                  id="property.purchasePrice"
-                  label="Kaufpreis"
-                  registration={form.register}
-                  error={
-                    form.formState.errors.property?.purchasePrice?.message
-                  }
-                />
-                <MoneyField
-                  id="property.acquisitionCosts"
-                  label="Kaufnebenkosten"
-                  registration={form.register}
-                  error={
-                    form.formState.errors.property?.acquisitionCosts?.message
-                  }
-                />
-                <MoneyField
-                  id="property.landValue"
-                  label="Grundstücksanteil"
-                  registration={form.register}
-                  error={form.formState.errors.property?.landValue?.message}
-                />
-                <MoneyField
-                  id="property.buildingValue"
-                  label="Gebäudeanteil"
-                  registration={form.register}
-                  error={form.formState.errors.property?.buildingValue?.message}
-                />
-                <MoneyField
-                  id="property.currentFinancing"
-                  label="Aktuelle Finanzierung"
-                  registration={form.register}
-                  error={
-                    form.formState.errors.property?.currentFinancing?.message
-                  }
-                />
-                <MoneyField
-                  id="property.marketValue"
-                  label="Aktueller Marktwert"
-                  registration={form.register}
-                  error={form.formState.errors.property?.marketValue?.message}
-                />
-                <MoneyField
-                  id="property.expectedMonthlyRent"
-                  label="Erwartete Monatsmiete"
-                  registration={form.register}
-                  error={
-                    form.formState.errors.property?.expectedMonthlyRent?.message
-                  }
-                />
-                <div className="space-y-2">
-                  <Label htmlFor="property.totalArea">Wohnfläche in m²</Label>
-                  <Input
-                    id="property.totalArea"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    aria-invalid={Boolean(
-                      form.formState.errors.property?.totalArea,
-                    )}
-                    {...form.register("property.totalArea", {
-                      valueAsNumber: true,
-                    })}
-                  />
-                  <FieldError
-                    message={form.formState.errors.property?.totalArea?.message}
-                  />
-                </div>
-                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  Die Anzahl der Einheiten wird im nächsten Schritt automatisch
-                  aus deinen angelegten Einheiten übernommen.
-                </div>
+                    <Plus />
+                    Weitere Einheit
+                  </Button>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Mehrere Einheiten werden nur beim MFH geführt.
+                  </p>
+                )}
               </div>
             ) : null}
 
             {step === 3 ? (
-              <div className="space-y-5">
-                {fields.map((field, index) => (
-                  <div className="rounded-xl border p-4" key={field.id}>
-                    <div className="mb-4 flex items-center justify-between">
-                      <p className="font-medium">Einheit {index + 1}</p>
-                      {fields.length > 1 ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => remove(index)}
-                          aria-label={`Einheit ${index + 1} entfernen`}
-                        >
-                          <Trash2 className="size-4 text-destructive" />
-                        </Button>
-                      ) : null}
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between rounded-xl border p-4">
+                  <div>
+                    <Label htmlFor="financing-enabled">
+                      Aktuelles Darlehen hinterlegen
+                    </Label>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Die Rate wird im Immobilien- und Gesamt-Cashflow
+                      berücksichtigt. Restschuld ist kein Zinsaufwand.
+                    </p>
+                  </div>
+                  <Switch
+                    id="financing-enabled"
+                    checked={watchedValues.financing?.enabled ?? false}
+                    onCheckedChange={(checked) =>
+                      form.setValue("financing.enabled", checked, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                  />
+                </div>
+                {watchedValues.financing?.enabled ? (
+                  <>
+                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                       <div className="space-y-2">
-                        <Label htmlFor={`units.${index}.unitNumber`}>
-                          Bezeichnung
+                        <Label>Finanzierungsart</Label>
+                        <Select
+                          value={
+                            watchedValues.financing?.loanType ?? "annuity"
+                          }
+                          onValueChange={(
+                            value: OnboardingInput["financing"]["loanType"],
+                          ) =>
+                            form.setValue("financing.loanType", value, {
+                              shouldDirty: true,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="annuity">
+                              Annuitätendarlehen
+                            </SelectItem>
+                            <SelectItem value="repayment">
+                              Ratentilgungsdarlehen
+                            </SelectItem>
+                            <SelectItem value="interest_only">
+                              Endfälliges Darlehen
+                            </SelectItem>
+                            <SelectItem value="variable">
+                              Variables Darlehen
+                            </SelectItem>
+                            <SelectItem value="other">Sonstiges</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="financing.lenderName">
+                          Darlehensgeber
                         </Label>
                         <Input
-                          id={`units.${index}.unitNumber`}
+                          id="financing.lenderName"
                           aria-invalid={Boolean(
-                            form.formState.errors.units?.[index]?.unitNumber,
+                            form.formState.errors.financing?.lenderName,
                           )}
-                          {...form.register(`units.${index}.unitNumber`)}
+                          {...form.register("financing.lenderName")}
                         />
                         <FieldError
                           message={
-                            form.formState.errors.units?.[index]?.unitNumber
+                            form.formState.errors.financing?.lenderName?.message
+                          }
+                        />
+                      </div>
+                      <MoneyField
+                        id="financing.originalPrincipal"
+                        label="Ursprüngliches Darlehen"
+                        registration={form.register}
+                        error={
+                          form.formState.errors.financing?.originalPrincipal
+                            ?.message
+                        }
+                      />
+                      <MoneyField
+                        id="financing.currentBalance"
+                        label="Aktuelle Restschuld"
+                        registration={form.register}
+                        error={
+                          form.formState.errors.financing?.currentBalance?.message
+                        }
+                      />
+                      <MoneyField
+                        id="financing.monthlyPayment"
+                        label="Finanzierungsrate (mtl.)"
+                        registration={form.register}
+                        error={
+                          form.formState.errors.financing?.monthlyPayment?.message
+                        }
+                      />
+                      <PercentageField
+                        id="financing.nominalInterestRate"
+                        label="Sollzins (p. a.)"
+                        registration={form.register}
+                        error={
+                          form.formState.errors.financing?.nominalInterestRate
+                            ?.message
+                        }
+                      />
+                      <PercentageField
+                        id="financing.initialRepaymentRate"
+                        label="Anfängliche Tilgung (p. a.)"
+                        registration={form.register}
+                        error={
+                          form.formState.errors.financing?.initialRepaymentRate
+                            ?.message
+                        }
+                        nullable
+                      />
+                      <div className="space-y-2">
+                        <Label htmlFor="financing.disbursedOn">Auszahlung</Label>
+                        <Input
+                          id="financing.disbursedOn"
+                          type="date"
+                          {...form.register("financing.disbursedOn")}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="financing.fixedRateUntil">
+                          Zinsbindung bis
+                        </Label>
+                        <Input
+                          id="financing.fixedRateUntil"
+                          type="date"
+                          {...form.register("financing.fixedRateUntil")}
+                        />
+                        <FieldError
+                          message={
+                            form.formState.errors.financing?.fixedRateUntil
                               ?.message
                           }
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`units.${index}.floor`}>Etage</Label>
-                        <Input
-                          id={`units.${index}.floor`}
-                          {...form.register(`units.${index}.floor`)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`units.${index}.area`}>
-                          Wohnfläche m²
-                        </Label>
-                        <Input
-                          id={`units.${index}.area`}
-                          type="number"
-                          min="0.1"
-                          step="0.01"
-                          aria-invalid={Boolean(
-                            form.formState.errors.units?.[index]?.area,
-                          )}
-                          {...form.register(`units.${index}.area`, {
-                            valueAsNumber: true,
-                          })}
-                        />
-                        <FieldError
-                          message={
-                            form.formState.errors.units?.[index]?.area?.message
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`units.${index}.rooms`}>Zimmer</Label>
-                        <Input
-                          id={`units.${index}.rooms`}
-                          type="number"
-                          min="0.5"
-                          step="0.5"
-                          aria-invalid={Boolean(
-                            form.formState.errors.units?.[index]?.rooms,
-                          )}
-                          {...form.register(`units.${index}.rooms`, {
-                            valueAsNumber: true,
-                          })}
-                        />
-                        <FieldError
-                          message={
-                            form.formState.errors.units?.[index]?.rooms?.message
-                          }
-                        />
-                      </div>
-                      <MoneyField
-                        id={`units.${index}.baseRent`}
-                        label="Kaltmiete"
-                        registration={form.register}
-                        error={
-                          form.formState.errors.units?.[index]?.baseRent?.message
-                        }
-                      />
-                      <MoneyField
-                        id={`units.${index}.serviceCharge`}
-                        label="Nebenkosten"
-                        registration={form.register}
-                        error={
-                          form.formState.errors.units?.[index]?.serviceCharge
-                            ?.message
-                        }
-                      />
-                      <MoneyField
-                        id={`units.${index}.parkingRent`}
-                        label="Stellplatzmiete"
-                        registration={form.register}
-                        error={
-                          form.formState.errors.units?.[index]?.parkingRent
-                            ?.message
-                        }
-                      />
-                      <div className="space-y-2">
-                        <Label htmlFor={`units.${index}.status`}>
-                          Mietstatus
-                        </Label>
-                        <Select
-                          value={
-                            watchedValues.units?.[index]?.status ?? "occupied"
-                          }
-                          onValueChange={(
-                            value: "occupied" | "vacant" | "renovation",
-                          ) => {
-                            form.setValue(`units.${index}.status`, value, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            });
-                            if (value !== "occupied") {
-                              form.setValue(
-                                `units.${index}.leaseStart`,
-                                "",
-                                {
-                                  shouldDirty: true,
-                                  shouldValidate: true,
-                                },
-                              );
-                            }
-                          }}
-                        >
-                          <SelectTrigger id={`units.${index}.status`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="occupied">Vermietet</SelectItem>
-                            <SelectItem value="vacant">Leerstand</SelectItem>
-                            <SelectItem value="renovation">Sanierung</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {watchedValues.units?.[index]?.status === "occupied" ? (
-                        <div className="space-y-2">
-                          <Label htmlFor={`units.${index}.leaseStart`}>
-                            Mietbeginn
-                          </Label>
-                          <Input
-                            id={`units.${index}.leaseStart`}
-                            type="date"
-                            required
-                            aria-invalid={Boolean(
-                              form.formState.errors.units?.[index]?.leaseStart,
-                            )}
-                            {...form.register(`units.${index}.leaseStart`)}
-                          />
-                          <FieldError
-                            message={
-                              form.formState.errors.units?.[index]?.leaseStart
-                                ?.message
-                            }
-                          />
-                        </div>
-                      ) : null}
                     </div>
+                    <div className="grid gap-3 rounded-xl bg-muted/40 p-4 sm:grid-cols-3">
+                      <SummaryValue
+                        label="Rate (mtl.)"
+                        value={currencyFormatter.format(
+                          watchedValues.financing?.monthlyPayment ?? 0,
+                        )}
+                      />
+                      <SummaryValue
+                        label="Zinsanteil, erste Näherung (mtl.)"
+                        value={formatCents(annualInterestCents / 12)}
+                        hint="Restschuld × Sollzins ÷ 12"
+                      />
+                      <SummaryValue
+                        label="Tilgungsanteil, erste Näherung (mtl.)"
+                        value={currencyFormatter.format(
+                          Math.max(
+                            0,
+                            (watchedValues.financing?.monthlyPayment ?? 0) -
+                              annualInterestCents / 1200,
+                          ),
+                        )}
+                        hint="Rate minus geschätzter Zinsanteil"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
+                    Keine laufende Finanzierung. Du kannst später auf der
+                    Immobilie jederzeit ein Darlehen ergänzen.
                   </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={fields.length >= 100}
-                  onClick={() =>
-                    append({
-                      unitNumber: nextOnboardingUnitNumber(
-                        form.getValues("units"),
-                      ),
-                      floor: "",
-                      area: 50,
-                      rooms: 2,
-                      baseRent: 0,
-                      serviceCharge: 0,
-                      parkingRent: 0,
-                      leaseStart: "",
-                      status: "occupied",
-                    })
-                  }
-                >
-                  <Plus />
-                  Weitere Einheit
-                </Button>
+                )}
               </div>
             ) : null}
 
             {step === 4 ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => form.setValue("importMode", "none")}
-                  className={cn(
-                    "rounded-xl border p-5 text-left transition-colors",
-                    watchedValues.importMode === "none"
-                      ? "border-primary bg-primary/5 ring-2 ring-primary/15"
-                      : "hover:bg-muted/50",
-                  )}
-                >
-                  <Database className="size-6 text-primary" />
-                  <p className="mt-4 font-medium">Mit eigenen Daten starten</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    CSV-Import, weitere Belege und Bankverbindungen kannst du
-                    später in Ruhe ergänzen.
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => form.setValue("importMode", "demo")}
-                  className={cn(
-                    "rounded-xl border p-5 text-left transition-colors",
-                    watchedValues.importMode === "demo"
-                      ? "border-primary bg-primary/5 ring-2 ring-primary/15"
-                      : "hover:bg-muted/50",
-                  )}
-                >
-                  <Building2 className="size-6 text-primary" />
-                  <p className="mt-4 font-medium">
-                    Mit gekennzeichneten Beispieldaten
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    Ergänzt dein Portfolio um Demo-Zahlungen, Belege,
-                    Finanzierungen, Aufgaben und Nachrichten.
-                  </p>
-                </button>
-                <div className="rounded-xl border border-dashed p-5 sm:col-span-2">
-                  <p className="font-medium">Weitere Importmöglichkeiten</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    CSV-Import, Rechnungsupload und Open-Banking-Einrichtung
-                    stehen anschließend in Integrationen und Belege bereit.
-                  </p>
+              <div className="space-y-6">
+                <div>
+                  <Label>Steuerberechnung</Label>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {(
+                      [
+                        ["automatic", "Automatisch", "Tarif 2026 aus Einkünften"],
+                        ["manual", "Manuell", "Nur effektiven Satz angeben"],
+                      ] as const
+                    ).map(([value, title, description]) => (
+                      <button
+                        type="button"
+                        key={value}
+                        onClick={() =>
+                          form.setValue("tax.calculationMode", value, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                        className={cn(
+                          "rounded-xl border p-4 text-left transition-colors",
+                          watchedValues.tax?.calculationMode === value
+                            ? "border-primary bg-primary/5 ring-2 ring-primary/15"
+                            : "hover:bg-muted/50",
+                        )}
+                      >
+                        <p className="font-medium">{title}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {watchedValues.tax?.calculationMode === "manual" ? (
+                  <div className="max-w-sm">
+                    <PercentageField
+                      id="tax.manualEffectiveTaxRate"
+                      label="Effektiver Steuersatz"
+                      registration={form.register}
+                      error={
+                        form.formState.errors.tax?.manualEffectiveTaxRate
+                          ?.message
+                      }
+                      nullable
+                    />
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Ein manueller Grenzsteuersatz wird nicht abgefragt.
+                    </p>
+                  </div>
+                ) : null}
+
+                {watchedValues.tax?.calculationMode === "automatic" ? (
+                  <div className="space-y-5">
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <MoneyField
+                        id="tax.otherTaxableIncome"
+                        label="Weitere steuerpflichtige Einkünfte (p. a.)"
+                        registration={form.register}
+                        error={
+                          form.formState.errors.tax?.otherTaxableIncome?.message
+                        }
+                        nullable
+                      />
+                      <div className="space-y-2">
+                        <Label>Veranlagung</Label>
+                        <Select
+                          value={watchedValues.tax?.filingStatus ?? "single"}
+                          onValueChange={(value: "single" | "joint") =>
+                            form.setValue("tax.filingStatus", value, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="single">
+                              Einzelveranlagung
+                            </SelectItem>
+                            <SelectItem value="joint">
+                              Zusammenveranlagung (Splitting)
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Beim Splitting wird der gemeinsame Tarif auf das halbe
+                          Einkommen angewandt und anschließend verdoppelt.
+                        </p>
+                      </div>
+                    </div>
+                    <label className="flex items-start gap-3 rounded-xl border p-4 text-sm">
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={
+                          watchedValues.tax?.rentalIncomeComplete ?? false
+                        }
+                        onCheckedChange={(checked) =>
+                          form.setValue(
+                            "tax.rentalIncomeComplete",
+                            checked === true,
+                            { shouldDirty: true, shouldValidate: true },
+                          )
+                        }
+                      />
+                      <span>
+                        <span className="font-medium">
+                          Alle Vertragsmieten sind vollständig erfasst.
+                        </span>
+                        <span className="mt-1 block text-muted-foreground">
+                          Erst danach werden effektiver und Grenzsteuersatz
+                          automatisch berechnet. Szenarien zählen nicht als
+                          echte Mieteinnahmen.
+                        </span>
+                      </span>
+                    </label>
+                    <FieldError
+                      message={
+                        form.formState.errors.tax?.rentalIncomeComplete?.message
+                      }
+                    />
+                    {automaticTaxEstimate ? (
+                      <div className="grid gap-3 rounded-xl bg-muted/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <SummaryValue
+                          label="Vermietungsergebnis (vorläufig, p. a.)"
+                          value={formatCents(taxableRentalResultCents)}
+                          hint="Vertragsmiete inkl. Nebenkosten-/Stellplatzeinnahmen minus AfA und geschätzte Zinsen; weitere Belege folgen später"
+                        />
+                        <SummaryValue
+                          label="Effektiver Steuersatz"
+                          value={formatRate(
+                            automaticTaxEstimate.effectiveTaxRate,
+                          )}
+                        />
+                        <SummaryValue
+                          label="Berechneter Grenzsteuersatz"
+                          value={formatRate(
+                            automaticTaxEstimate.marginalTaxRate,
+                          )}
+                        />
+                        <SummaryValue
+                          label="Steuerwirkung Vermietung (p. a.)"
+                          value={formatCents(
+                            automaticTaxEstimate.estimatedRentalTaxEffectCents,
+                          )}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex items-center gap-3 rounded-xl border p-4 text-sm">
+                      <Checkbox
+                        checked={watchedValues.tax?.churchTax ?? false}
+                        onCheckedChange={(checked) =>
+                          form.setValue("tax.churchTax", checked === true, {
+                            shouldDirty: true,
+                          })
+                        }
+                      />
+                      Kirchensteuer für die Detailrechnung vormerken
+                    </label>
+                    <label className="flex items-center gap-3 rounded-xl border p-4 text-sm">
+                      <Checkbox
+                        checked={
+                          watchedValues.tax?.solidaritySurcharge ?? false
+                        }
+                        onCheckedChange={(checked) =>
+                          form.setValue(
+                            "tax.solidaritySurcharge",
+                            checked === true,
+                            { shouldDirty: true },
+                          )
+                        }
+                      />
+                      Solidaritätszuschlag für die Detailrechnung vormerken
+                    </label>
+                  </div>
+                <p className="text-xs text-muted-foreground">
+                  Unverbindliche Modellrechnung, keine Steuerberatung. Die
+                  Tarifberechnung enthält noch keine individuellen Sonderfälle.
+                </p>
+              </div>
+            ) : null}
+
+            {step === 5 ? (
+              <div className="space-y-6">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <SummaryValue
+                    label="Modus"
+                    value={
+                      propertyMode === "existing"
+                        ? "Bestandsimmobilie"
+                        : "Fiktives Szenario"
+                    }
+                  />
+                  <SummaryValue
+                    label="Immobilie"
+                    value={watchedValues.property?.name || "–"}
+                    hint={`${fields.length} ${fields.length === 1 ? "Mietfläche" : "Einheiten"}`}
+                  />
+                  <SummaryValue
+                    label={
+                      propertyMode === "existing"
+                        ? "IST-Kaltmiete (p. a.)"
+                        : "Planmiete (p. a.)"
+                    }
+                    value={formatCents(
+                      propertyMode === "existing"
+                        ? annualContractRentCents
+                        : annualTargetRentCents,
+                    )}
+                  />
+                  <SummaryValue
+                    label="Gebäudeanteil / AfA-Basis"
+                    value={formatCents(acquisition?.buildingValueCents)}
+                  />
+                  <SummaryValue
+                    label="Finanzierungsrate (mtl.)"
+                    value={currencyFormatter.format(
+                      watchedValues.financing?.enabled
+                        ? (watchedValues.financing.monthlyPayment ?? 0)
+                        : 0,
+                    )}
+                  />
+                  <SummaryValue
+                    label="AfA (p. a.)"
+                    value={formatCents(calculatedDepreciationCents)}
+                  />
+                  <SummaryValue
+                    label="Steuermodus"
+                    value={
+                      watchedValues.tax?.calculationMode === "automatic"
+                        ? "Automatisch"
+                        : "Manuell"
+                    }
+                  />
+                  <SummaryValue
+                    label="SOLL-Kaltmiete (p. a.)"
+                    value={formatCents(annualTargetRentCents)}
+                  />
+                </div>
+                <div className="rounded-xl border p-5">
+                  <h3 className="font-medium">Was jetzt gespeichert wird</h3>
+                  <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                    <li>• Kaufpreisaufteilung mit transparenter Herleitung</li>
+                    <li>• Eindeutig getrennte Vertrags- und Markt-Kaltmieten</li>
+                    <li>• Darlehen mit Rate, Zinsbindung, Zins und Tilgung</li>
+                    <li>
+                      • {propertyMode === "existing"
+                        ? "Mietplan für die Bestandsimmobilie; Zahlungen bleiben separat"
+                        : "Szenario ohne echte Forderung, Zahlung oder Ist-Vermögen"}
+                    </li>
+                  </ul>
+                </div>
+                <label className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-5 text-sm">
+                  <Checkbox
+                    className="mt-0.5"
+                    checked={watchedValues.confirmation ?? false}
+                    onCheckedChange={(checked) =>
+                      form.setValue("confirmation", checked === true, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                  />
+                  <span>
+                    <span className="font-medium">
+                      Ich habe die Zusammenfassung geprüft.
+                    </span>
+                    <span className="mt-1 block text-muted-foreground">
+                      Mir ist bewusst, dass Marktwert, AfA und Steuerwerte
+                      unverbindliche Schätzungen sind und später bearbeitet
+                      werden können.
+                    </span>
+                  </span>
+                </label>
+                <FieldError
+                  message={form.formState.errors.confirmation?.message}
+                />
               </div>
             ) : null}
           </CardContent>
@@ -1085,11 +1779,7 @@ export function OnboardingWizard({
             Zurück
           </Button>
           {step < steps.length - 1 ? (
-            <Button
-              type="button"
-              onClick={nextStep}
-              disabled={pending}
-            >
+            <Button type="button" onClick={nextStep} disabled={pending}>
               Weiter
               <ArrowRight />
             </Button>

@@ -50,7 +50,9 @@ describe("resumable onboarding database boundary", () => {
   });
 
   it("wires the resume RPC to a discoverable application flow", () => {
-    expect(actions).toContain('supabase.rpc("resume_portfolio_onboarding"');
+    expect(actions).toContain(
+      'onboardingClient.rpc("resume_portfolio_onboarding_v2"',
+    );
     expect(page).toContain('resumeRequested = (await searchParams).resume === "1"');
     expect(dashboard).toContain('href="/onboarding?resume=1"');
     expect(dashboard).toContain("Geführte Einrichtung fortsetzen");

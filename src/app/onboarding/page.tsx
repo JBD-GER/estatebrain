@@ -90,19 +90,23 @@ export default async function OnboardingPage({
       taxYear: Number(taxYearResult.data?.year ?? currentYear),
     };
     initialTax = {
-      calculationsEnabled: taxProfile?.calculations_enabled ?? true,
-      marginalTaxRate:
-        percentFromFraction(taxProfile?.marginal_tax_rate) ?? 30,
-      effectiveTaxRate: percentFromFraction(
-        taxProfile?.effective_tax_rate,
-      ),
-      churchTax: taxProfile?.church_tax_enabled ?? false,
-      solidaritySurcharge:
-        taxProfile?.solidarity_surcharge_enabled ?? false,
-      taxableIncome:
+      calculationMode:
+        (taxProfile?.calculations_enabled ?? true) &&
+        taxProfile?.assumed_taxable_income_cents != null
+          ? "automatic"
+          : "manual",
+      manualEffectiveTaxRate:
+        percentFromFraction(taxProfile?.effective_tax_rate) ??
+        percentFromFraction(taxProfile?.marginal_tax_rate) ??
+        0,
+      otherTaxableIncome:
         taxProfile?.assumed_taxable_income_cents == null
           ? null
           : Number(taxProfile.assumed_taxable_income_cents) / 100,
+      rentalIncomeComplete: false,
+      churchTax: taxProfile?.church_tax_enabled ?? false,
+      solidaritySurcharge:
+        taxProfile?.solidarity_surcharge_enabled ?? false,
       filingStatus:
         taxProfile?.assessment_type === "joint" ? "joint" : "single",
     };

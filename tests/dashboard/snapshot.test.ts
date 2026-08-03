@@ -21,6 +21,7 @@ function liveSource(
     income: [],
     expenses: [],
     loans: [],
+    loanPayments: [],
     loansAvailable: true,
     unresolvedDocuments: 0,
     tasks: [],
@@ -45,10 +46,10 @@ describe("dashboard snapshot", () => {
     expect(snapshot.metrics.monthlyTargetRentCents).toBe(506_000);
     expect(snapshot.metrics.monthlyActualRentCents).toBe(379_000);
     expect(snapshot.metrics.openRentCents).toBe(127_000);
-    expect(snapshot.metrics.monthlyExpensesCents).toBe(729_400);
-    expect(snapshot.metrics.operatingCashflowCents).toBe(194_600);
-    expect(snapshot.metrics.financingCashflowCents).toBe(-400);
-    expect(snapshot.metrics.estimatedAfterTaxCents).toBe(19_680);
+    expect(snapshot.metrics.monthlyExpensesCents).toBe(851_900);
+    expect(snapshot.metrics.operatingCashflowCents).toBe(-155_400);
+    expect(snapshot.metrics.financingCashflowCents).toBe(-472_900);
+    expect(snapshot.metrics.estimatedAfterTaxCents).toBe(-485_880);
     expect(snapshot.metrics.portfolioValueCents).toBe(135_800_000);
     expect(snapshot.metrics.loanBalanceCents).toBe(66_180_000);
     expect(snapshot.metrics.equityCents).toBe(69_620_000);
@@ -82,8 +83,63 @@ describe("dashboard snapshot", () => {
   it("deduplicates hybrid rent sources only by stable bank transaction id", () => {
     const snapshot = buildDashboardSnapshot(
       liveSource({
+        properties: [
+          {
+            id: "property-1",
+            name: "Testimmobilie",
+            purchasePriceCents: 1_000_000,
+            acquisitionCostsCents: 0,
+            buildingValueCents: null,
+            currentMarketValueCents: null,
+            purchaseDate: null,
+          },
+          {
+            id: "property-2",
+            name: "Zweite Testimmobilie",
+            purchasePriceCents: 1_000_000,
+            acquisitionCostsCents: 0,
+            buildingValueCents: null,
+            currentMarketValueCents: null,
+            purchaseDate: null,
+          },
+        ],
+        units: [
+          {
+            id: "unit-1",
+            propertyId: "property-1",
+            label: "WE 1",
+            areaSquareMeters: null,
+            targetColdRentCents: 0,
+            status: "occupied",
+          },
+        ],
+        leases: [
+          {
+            id: "lease-1",
+            unitId: "unit-1",
+            startsOn: "2026-01-01",
+            endsOn: null,
+            coldRentCents: 100_000,
+            ancillaryCents: 0,
+            parkingCents: 0,
+            otherCents: 0,
+            status: "active",
+          },
+        ],
+        rentClaims: [
+          {
+            id: "claim-1",
+            leaseId: "lease-1",
+            claimMonth: "2026-07-01",
+            dueDate: "2026-07-03",
+            amountCents: 100_000,
+            paidCents: 100_000,
+            status: "paid",
+          },
+        ],
         rentPayments: [
           {
+            rentClaimId: "claim-1",
             paidOn: "2026-07-02",
             amountCents: 100_000,
             bankTransactionId: "bank-transaction-1",
@@ -91,21 +147,21 @@ describe("dashboard snapshot", () => {
         ],
         income: [
           {
-            propertyId: null,
+            propertyId: "property-1",
             entryDate: "2026-07-02",
             amountCents: 100_000,
             category: "rent",
             bankTransactionId: "bank-transaction-1",
           },
           {
-            propertyId: null,
+            propertyId: "property-1",
             entryDate: "2026-07-03",
             amountCents: 50_000,
             category: "rent",
             bankTransactionId: "bank-transaction-2",
           },
           {
-            propertyId: null,
+            propertyId: "property-2",
             entryDate: "2026-07-04",
             amountCents: 40_000,
             category: "rent",
@@ -115,7 +171,259 @@ describe("dashboard snapshot", () => {
       }),
     );
 
-    expect(snapshot.metrics.monthlyActualRentCents).toBe(150_000);
+    expect(snapshot.metrics.monthlyActualRentCents).toBe(190_000);
+  });
+
+  it("reconciles two properties and keeps actual and forecast debt service separate", () => {
+    const expense = (
+      propertyId: string,
+      entryDate: string,
+      amountCents: number,
+      flags: { interest?: boolean; principal?: boolean } = {},
+    ) => ({
+      propertyId,
+      entryDate,
+      amountCents,
+      bankTransactionId: null,
+      cashEffective: true,
+      isInterest: flags.interest ?? false,
+      isPrincipal: flags.principal ?? false,
+      isCapitalizable: false,
+      isDeductible: !flags.principal,
+    });
+    const snapshot = buildDashboardSnapshot(
+      liveSource({
+        properties: [
+          {
+            id: "property-positive",
+            name: "Haus Grün",
+            purchasePriceCents: 30_000_000,
+            acquisitionCostsCents: 0,
+            buildingValueCents: null,
+            currentMarketValueCents: 35_000_000,
+            purchaseDate: "2020-01-01",
+          },
+          {
+            id: "property-negative",
+            name: "Haus Rot",
+            purchasePriceCents: 20_000_000,
+            acquisitionCostsCents: 0,
+            buildingValueCents: null,
+            currentMarketValueCents: 18_000_000,
+            purchaseDate: "2021-01-01",
+          },
+        ],
+        units: [
+          {
+            id: "unit-positive",
+            propertyId: "property-positive",
+            label: "WE 1",
+            areaSquareMeters: 70,
+            targetColdRentCents: 120_000,
+            status: "occupied",
+          },
+          {
+            id: "unit-negative",
+            propertyId: "property-negative",
+            label: "WE 1",
+            areaSquareMeters: 55,
+            targetColdRentCents: 80_000,
+            status: "occupied",
+          },
+        ],
+        leases: [
+          {
+            id: "lease-positive",
+            unitId: "unit-positive",
+            startsOn: "2025-01-01",
+            endsOn: null,
+            coldRentCents: 100_000,
+            ancillaryCents: 0,
+            parkingCents: 0,
+            otherCents: 0,
+            status: "active",
+          },
+          {
+            id: "lease-negative",
+            unitId: "unit-negative",
+            startsOn: "2025-01-01",
+            endsOn: null,
+            coldRentCents: 70_000,
+            ancillaryCents: 0,
+            parkingCents: 0,
+            otherCents: 0,
+            status: "active",
+          },
+        ],
+        rentClaims: [
+          {
+            id: "claim-positive",
+            leaseId: "lease-positive",
+            claimMonth: "2026-07-01",
+            dueDate: "2026-07-03",
+            amountCents: 100_000,
+            paidCents: 100_000,
+            status: "paid",
+          },
+          {
+            id: "claim-negative",
+            leaseId: "lease-negative",
+            claimMonth: "2026-07-01",
+            dueDate: "2026-07-03",
+            amountCents: 70_000,
+            paidCents: 70_000,
+            status: "paid",
+          },
+        ],
+        rentPayments: [
+          {
+            rentClaimId: "claim-positive",
+            paidOn: "2026-07-02",
+            amountCents: 100_000,
+            bankTransactionId: "rent-positive",
+          },
+          {
+            rentClaimId: "claim-negative",
+            paidOn: "2026-07-02",
+            amountCents: 70_000,
+            bankTransactionId: "rent-negative",
+          },
+        ],
+        income: [
+          {
+            propertyId: "property-positive",
+            entryDate: "2026-07-02",
+            amountCents: 100_000,
+            category: "rent",
+            bankTransactionId: "rent-positive",
+          },
+          {
+            propertyId: "property-positive",
+            entryDate: "2026-07-05",
+            amountCents: 20_000,
+            category: "insurance_reimbursement",
+            bankTransactionId: null,
+          },
+        ],
+        expenses: [
+          expense("property-positive", "2026-07-10", 30_000),
+          expense("property-positive", "2026-02-10", 15_000),
+          expense("property-positive", "2026-07-15", 20_000, {
+            interest: true,
+          }),
+          expense("property-positive", "2026-07-15", 30_000, {
+            principal: true,
+          }),
+          expense("property-negative", "2026-07-10", 90_000),
+          expense("property-negative", "2026-03-10", 20_000),
+          expense("property-negative", "2026-07-15", 10_000, {
+            interest: true,
+          }),
+          expense("property-negative", "2026-07-15", 30_000, {
+            principal: true,
+          }),
+        ],
+        loans: [
+          {
+            id: "loan-positive",
+            propertyId: "property-positive",
+            currentBalanceCents: 10_000_000,
+            monthlyPaymentCents: 55_000,
+            fixedRateUntil: "2030-12-31",
+            status: "active",
+          },
+          {
+            id: "loan-negative",
+            propertyId: "property-negative",
+            currentBalanceCents: 8_000_000,
+            monthlyPaymentCents: 40_000,
+            fixedRateUntil: "2029-12-31",
+            status: "active",
+          },
+        ],
+        loanPayments: [
+          {
+            loanId: "loan-positive",
+            dueDate: "2026-07-15",
+            paidOn: "2026-07-15",
+            paymentCents: 50_000,
+            interestCents: 20_000,
+            principalCents: 25_000,
+            feesCents: 5_000,
+            status: "paid",
+            bankTransactionId: "loan-payment-positive",
+          },
+        ],
+      }),
+    );
+
+    const positive = snapshot.properties.find(
+      (property) => property.id === "property-positive",
+    );
+    const negative = snapshot.properties.find(
+      (property) => property.id === "property-negative",
+    );
+
+    expect(positive).toMatchObject({
+      monthlyContractColdRentCents: 100_000,
+      monthlyMarketColdRentCents: 120_000,
+      monthlyRentPaymentsCents: 100_000,
+      monthlyIncomeCents: 120_000,
+      monthlyCashExpensesCents: 30_000,
+      monthlyDebtServiceCents: 50_000,
+      debtServiceMode: "actual",
+      monthlyCashflowAfterFinancingCents: 40_000,
+      currentYearExpensesCents: 45_000,
+    });
+    expect(negative).toMatchObject({
+      monthlyContractColdRentCents: 70_000,
+      monthlyMarketColdRentCents: 80_000,
+      monthlyRentPaymentsCents: 70_000,
+      monthlyIncomeCents: 70_000,
+      monthlyCashExpensesCents: 90_000,
+      monthlyDebtServiceCents: 40_000,
+      debtServiceMode: "forecast",
+      monthlyCashflowAfterFinancingCents: -60_000,
+      currentYearExpensesCents: 110_000,
+    });
+
+    expect(snapshot.metrics).toMatchObject({
+      monthlyContractColdRentCents: 170_000,
+      monthlyMarketColdRentCents: 200_000,
+      monthlyActualRentCents: 170_000,
+      monthlyCashExpensesCents: 120_000,
+      monthlyDebtServiceCents: 90_000,
+      debtServiceMode: "mixed",
+      monthlyExpensesCents: 210_000,
+      operatingCashflowCents: 70_000,
+      financingCashflowCents: -20_000,
+      currentYearExpensesCents: 155_000,
+    });
+    expect(snapshot.metrics.monthlyActualRentCents).toBe(
+      snapshot.properties.reduce(
+        (sum, property) => sum + property.monthlyRentPaymentsCents,
+        0,
+      ),
+    );
+    expect(snapshot.metrics.monthlyCashExpensesCents).toBe(
+      snapshot.properties.reduce(
+        (sum, property) => sum + property.monthlyCashExpensesCents,
+        0,
+      ),
+    );
+    expect(snapshot.metrics.monthlyDebtServiceCents).toBe(
+      snapshot.properties.reduce(
+        (sum, property) => sum + property.monthlyDebtServiceCents,
+        0,
+      ),
+    );
+    expect(snapshot.metrics.financingCashflowCents).toBe(
+      snapshot.properties.reduce(
+        (sum, property) =>
+          sum + property.monthlyCashflowAfterFinancingCents,
+        0,
+      ),
+    );
   });
 
   it("marks loan-derived metrics unavailable instead of inventing zero debt", () => {

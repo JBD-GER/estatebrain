@@ -10,7 +10,9 @@ const values = {
   tax: {},
   property: {},
   units: [{}],
+  financing: {},
   importMode: "none",
+  confirmation: false,
 };
 
 describe("onboarding draft isolation", () => {
@@ -29,15 +31,15 @@ describe("onboarding draft isolation", () => {
           step: 99,
           values,
         }),
-        5,
+        6,
       ),
-    ).toMatchObject({ step: 4, values });
+    ).toMatchObject({ step: 5, values });
 
-    expect(parseOnboardingDraft("not-json", 5)).toBeNull();
+    expect(parseOnboardingDraft("not-json", 6)).toBeNull();
     expect(
       parseOnboardingDraft(
         JSON.stringify({ version: 1, step: 1, values }),
-        5,
+        6,
       ),
     ).toBeNull();
     expect(
@@ -47,7 +49,7 @@ describe("onboarding draft isolation", () => {
           step: 1,
           values: { ...values, units: [] },
         }),
-        5,
+        6,
       ),
     ).toBeNull();
   });

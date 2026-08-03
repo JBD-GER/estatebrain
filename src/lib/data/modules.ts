@@ -143,13 +143,15 @@ export async function getModulePageData(slug: string) {
     { data: properties, error: propertiesError },
     { data: units, error: unitsError },
     { data: tenants, error: tenantsError },
+    { data: unitCapacityRows, error: unitCapacityError },
   ] = await Promise.all([
     query.order("created_at", { ascending: false }).limit(100),
     plan.relationOptions.has("properties")
       ? supabase
           .from("properties")
-          .select("id, name")
+          .select("id, name, property_type")
           .eq("organization_id", viewer.organizationId)
+          .is("archived_at", null)
           .order("name")
       : Promise.resolve({ data: [], error: null }),
     plan.relationOptions.has("units")
@@ -166,20 +168,42 @@ export async function getModulePageData(slug: string) {
           .eq("organization_id", viewer.organizationId)
           .order("last_name")
       : Promise.resolve({ data: [], error: null }),
+    slug === "einheiten"
+      ? supabase
+          .from("units")
+          .select("property_id")
+          .eq("organization_id", viewer.organizationId)
+          .is("archived_at", null)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const relationErrors: RelationLoadErrors = {
-    ...(propertiesError ? { properties: true } : {}),
+    ...(propertiesError || unitCapacityError ? { properties: true } : {}),
     ...(unitsError ? { units: true } : {}),
     ...(tenantsError ? { tenants: true } : {}),
   };
 
-  const propertyOptions = (properties ?? []).map((property) => ({
+  const propertyIdsWithUnits = new Set(
+    (unitCapacityRows ?? []).map((unit) => String(unit.property_id)),
+  );
+  const allPropertyOptions = (properties ?? []).map((property) => ({
     value: String(property.id),
     label: asText(property.name) || "Immobilie",
+    propertyType: asText(property.property_type),
   }));
+  const propertyOptions = allPropertyOptions
+    .filter(
+      (property) =>
+        slug !== "einheiten" ||
+        property.propertyType === "apartment_building" ||
+        !propertyIdsWithUnits.has(property.value),
+    )
+    .map((property) => ({
+      value: property.value,
+      label: property.label,
+    }));
   const propertyMap = new Map(
-    propertyOptions.map((property) => [property.value, property.label]),
+    allPropertyOptions.map((property) => [property.value, property.label]),
   );
   const unitOptions = (units ?? []).map((unit) => ({
     value: String(unit.id),
@@ -284,6 +308,7 @@ export async function getModulePageData(slug: string) {
       propertiesError?.message ??
       unitsError?.message ??
       tenantsError?.message ??
+      unitCapacityError?.message ??
       null,
     forbidden: false,
     canCreate,

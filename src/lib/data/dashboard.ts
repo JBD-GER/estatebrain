@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   calculateDepreciation,
   roundHalfAwayFromZero,
@@ -12,6 +13,7 @@ import type {
   DashboardExpenseSource,
   DashboardIncomeSource,
   DashboardLeaseSource,
+  DashboardLoanPaymentSource,
   DashboardLoanSource,
   DashboardPropertySource,
   DashboardRenovationSource,
@@ -24,15 +26,6 @@ import { fetchAllRows } from "@/lib/supabase/pagination";
 import { createClient } from "@/lib/supabase/server";
 
 type UnknownRow = Record<string, unknown>;
-const RENT_INCOME_CATEGORIES = new Set([
-  "rent",
-  "base_rent",
-  "cold_rent",
-  "service_charge",
-  "ancillary",
-  "parking",
-  "other_rent",
-]);
 
 type QueryResult = {
   data: unknown;
@@ -146,6 +139,7 @@ function queryIssue(
 export async function getLiveDashboardSnapshot() {
   const viewer = await requireOrganization();
   const supabase = await createClient();
+  const dynamicSupabase = supabase as unknown as SupabaseClient;
   const asOfDate = dateInBerlin();
   const historyStart = firstDashboardMonth(asOfDate);
   const bookkeepingAvailable = hasPermission(
@@ -157,12 +151,13 @@ export async function getLiveDashboardSnapshot() {
   const results = await Promise.all([
     fetchAllRows(
       (from, to) =>
-        supabase
+        dynamicSupabase
           .from("properties")
           .select(
             "id,name,purchase_price_cents,acquisition_costs_cents,building_value_cents,current_market_value_cents,purchase_date,status",
           )
           .eq("organization_id", viewer.organizationId)
+          .eq("property_mode", "existing")
           .is("archived_at", null)
           .order("id")
           .range(from, to),
@@ -172,7 +167,9 @@ export async function getLiveDashboardSnapshot() {
       (from, to) =>
         supabase
           .from("units")
-          .select("id,property_id,unit_number,area_sqm,status")
+          .select(
+            "id,property_id,unit_number,area_sqm,target_cold_rent_cents,status",
+          )
           .eq("organization_id", viewer.organizationId)
           .is("archived_at", null)
           .order("id")
@@ -209,7 +206,9 @@ export async function getLiveDashboardSnapshot() {
       (from, to) =>
         supabase
           .from("rent_payments")
-          .select("paid_on,amount_cents,bank_transaction_id,allocation_status")
+          .select(
+            "rent_claim_id,paid_on,amount_cents,bank_transaction_id,allocation_status",
+          )
           .eq("organization_id", viewer.organizationId)
           .gte("paid_on", historyStart)
           .eq("allocation_status", "confirmed")
@@ -240,7 +239,7 @@ export async function getLiveDashboardSnapshot() {
             supabase
               .from("expense_entries")
               .select(
-                "property_id,entry_date,amount_cents,is_cash_effective,is_interest,is_principal,is_capitalizable,is_deductible,payment_status",
+                "property_id,entry_date,amount_cents,bank_transaction_id,is_cash_effective,is_interest,is_principal,is_capitalizable,is_deductible,payment_status",
               )
               .eq("organization_id", viewer.organizationId)
               .gte("entry_date", historyStart)
@@ -266,6 +265,22 @@ export async function getLiveDashboardSnapshot() {
               .order("id")
               .range(from, to),
           { label: "Finanzierungen" },
+        )
+      : Promise.resolve({ data: [], error: null }),
+    loansAvailable
+      ? fetchAllRows(
+          (from, to) =>
+            supabase
+              .from("loan_payments")
+              .select(
+                "loan_id,due_date,paid_on,payment_cents,interest_cents,principal_cents,fees_cents,status,bank_transaction_id",
+              )
+              .eq("organization_id", viewer.organizationId)
+              .gte("paid_on", historyStart)
+              .in("status", ["paid", "overpaid"])
+              .order("id")
+              .range(from, to),
+          { label: "Darlehenszahlungen" },
         )
       : Promise.resolve({ data: [], error: null }),
     fetchAllRows(
@@ -304,9 +319,11 @@ export async function getLiveDashboardSnapshot() {
       { label: "Sanierungen" },
     ),
     taxDataAvailable
-      ? supabase
+      ? dynamicSupabase
           .from("tax_profiles")
-          .select("marginal_tax_rate,calculations_enabled")
+          .select(
+            "effective_tax_rate,calculations_enabled",
+          )
           .eq("organization_id", viewer.organizationId)
           .eq("user_id", viewer.userId)
           .maybeSingle()
@@ -314,10 +331,10 @@ export async function getLiveDashboardSnapshot() {
     taxDataAvailable
       ? fetchAllRows(
           (from, to) =>
-            supabase
+            dynamicSupabase
               .from("depreciation_assets")
               .select(
-                "depreciable_basis_cents,use_start_date,annual_rate,manual_adjustment_cents",
+                "property_id,depreciable_basis_cents,use_start_date,annual_rate,manual_adjustment_cents,manual_annual_depreciation_cents",
               )
               .eq("organization_id", viewer.organizationId)
               .is("archived_at", null)
@@ -337,6 +354,7 @@ export async function getLiveDashboardSnapshot() {
     incomeResult,
     expensesResult,
     loansResult,
+    loanPaymentsResult,
     documentsResult,
     tasksResult,
     renovationsResult,
@@ -369,6 +387,7 @@ export async function getLiveDashboardSnapshot() {
     [incomeResult, "Einnahmen"],
     [expensesResult, "Ausgaben"],
     [loansResult, "Finanzierungen"],
+    [loanPaymentsResult, "Darlehenszahlungen"],
     [documentsResult, "Belege"],
     [tasksResult, "Aufgaben"],
     [renovationsResult, "Sanierungen"],
@@ -404,6 +423,8 @@ export async function getLiveDashboardSnapshot() {
       propertyId: text(row.property_id),
       label: text(row.unit_number, "Einheit"),
       areaSquareMeters: finiteNumber(row.area_sqm),
+      targetColdRentCents:
+        cents(row.target_cold_rent_cents, issues) ?? 0,
       status: text(row.status),
     }),
   );
@@ -455,6 +476,7 @@ export async function getLiveDashboardSnapshot() {
   const rentPayments: DashboardRentPaymentSource[] = asRows(
     paymentsResult.data,
   ).map((row) => ({
+    rentClaimId: optionalText(row.rent_claim_id),
     paidOn: text(row.paid_on),
     amountCents: cents(row.amount_cents, issues) ?? 0,
     bankTransactionId: optionalText(row.bank_transaction_id),
@@ -468,27 +490,13 @@ export async function getLiveDashboardSnapshot() {
       bankTransactionId: optionalText(row.bank_transaction_id),
     }),
   );
-  const confirmedPaymentMonths = new Set(
-    rentPayments.map((payment) => payment.paidOn.slice(0, 7)),
-  );
-  if (
-    income.some(
-      (entry) =>
-        RENT_INCOME_CATEGORIES.has(entry.category) &&
-        entry.bankTransactionId === null &&
-        confirmedPaymentMonths.has(entry.entryDate.slice(0, 7)),
-    )
-  ) {
-    issues.add(
-      "Unverknüpfte manuelle Mieteinnahmen wurden in Monaten mit bestätigten Mietzahlungen nicht zusätzlich gezählt, um eine mögliche Doppelzählung zu vermeiden.",
-    );
-  }
   const expenses: DashboardExpenseSource[] = asRows(
     expensesResult.data,
   ).map((row) => ({
     propertyId: optionalText(row.property_id),
     entryDate: text(row.entry_date),
     amountCents: cents(row.amount_cents, issues) ?? 0,
+    bankTransactionId: optionalText(row.bank_transaction_id),
     cashEffective: boolean(row.is_cash_effective),
     isInterest: boolean(row.is_interest),
     isPrincipal: boolean(row.is_principal),
@@ -507,6 +515,19 @@ export async function getLiveDashboardSnapshot() {
       status: text(row.status),
     }),
   );
+  const loanPayments: DashboardLoanPaymentSource[] = asRows(
+    loanPaymentsResult.data,
+  ).map((row) => ({
+    loanId: text(row.loan_id),
+    dueDate: text(row.due_date),
+    paidOn: optionalText(row.paid_on),
+    paymentCents: cents(row.payment_cents, issues) ?? 0,
+    interestCents: cents(row.interest_cents, issues) ?? 0,
+    principalCents: cents(row.principal_cents, issues) ?? 0,
+    feesCents: cents(row.fees_cents, issues) ?? 0,
+    status: text(row.status),
+    bankTransactionId: optionalText(row.bank_transaction_id),
+  }));
   const documents = asRows(documentsResult.data);
   const tasks: DashboardTaskSource[] = asRows(tasksResult.data).map(
     (row) => ({
@@ -535,11 +556,22 @@ export async function getLiveDashboardSnapshot() {
   )[0];
   const taxRate =
     taxProfile && boolean(taxProfile.calculations_enabled, true)
-      ? rate(taxProfile.marginal_tax_rate, issues)
+      ? rate(taxProfile.effective_tax_rate, issues)
       : null;
-  const depreciationRows = asRows(depreciationResult.data);
+  const propertyIds = new Set(properties.map((property) => property.id));
+  const depreciationRows = asRows(depreciationResult.data).filter((row) =>
+    propertyIds.has(text(row.property_id)),
+  );
   const monthlyDepreciationCents = sumCents(
     depreciationRows.map((row) => {
+      const manualAnnualDepreciation = cents(
+        row.manual_annual_depreciation_cents,
+        issues,
+        { optional: true },
+      );
+      if (manualAnnualDepreciation !== null) {
+        return roundHalfAwayFromZero(manualAnnualDepreciation / 12);
+      }
       const basis = cents(row.depreciable_basis_cents, issues) ?? 0;
       const annualRate = rate(row.annual_rate, issues);
       const startDate = text(row.use_start_date);
@@ -582,6 +614,7 @@ export async function getLiveDashboardSnapshot() {
     income,
     expenses,
     loans,
+    loanPayments,
     loansAvailable,
     unresolvedDocuments: documents.filter(
       (document) =>

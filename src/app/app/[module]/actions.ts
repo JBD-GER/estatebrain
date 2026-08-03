@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireOrganization } from "@/lib/auth/dal";
 import { hasPermission, type Permission } from "@/lib/auth/permissions";
+import {
+  calculateAcquisitionAllocation,
+  DomainValidationError,
+} from "@/lib/domain";
 import { getModuleDefinition, type ModuleField } from "@/lib/modules";
 
 export type CreateRecordState = {
@@ -170,6 +174,7 @@ export async function createModuleRecordAction(
 
   const parsedValues = parsed.data as Record<string, unknown>;
   const semanticErrors: Record<string, string[]> = {};
+  let derivedValues: Record<string, unknown> = {};
   if (
     slug === "immobilien" &&
     typeof parsedValues.rentable_area_sqm === "number" &&
@@ -178,6 +183,97 @@ export async function createModuleRecordAction(
     semanticErrors.rentable_area_sqm = [
       "Die vermietbare Fläche muss größer als 0 sein.",
     ];
+  }
+  if (slug === "immobilien") {
+    const constructionYear = Number(parsedValues.construction_year);
+    if (
+      !Number.isInteger(constructionYear) ||
+      constructionYear < 1000 ||
+      constructionYear > 2200
+    ) {
+      semanticErrors.construction_year = [
+        "Bitte gib ein gültiges vierstelliges Baujahr an.",
+      ];
+    }
+
+    const purchasePriceCents = Number(parsedValues.purchase_price_cents);
+    if (!Number.isSafeInteger(purchasePriceCents) || purchasePriceCents <= 0) {
+      semanticErrors.purchase_price_cents = [
+        "Der Kaufpreis muss größer als 0 sein.",
+      ];
+    }
+
+    const landAreaSquareMeters = Number(parsedValues.land_area_sqm);
+    if (!Number.isFinite(landAreaSquareMeters) || landAreaSquareMeters <= 0) {
+      semanticErrors.land_area_sqm = [
+        "Die Grundstücksfläche muss größer als 0 sein.",
+      ];
+    }
+
+    if (Object.keys(semanticErrors).length === 0) {
+      try {
+        const allocation = calculateAcquisitionAllocation({
+          purchasePriceCents,
+          landAreaSquareMeters,
+          standardLandValueCentsPerSquareMeter: Number(
+            parsedValues.standard_land_value_cents_per_sqm,
+          ),
+          landOwnershipShare:
+            typeof parsedValues.land_ownership_share === "number"
+              ? parsedValues.land_ownership_share
+              : 1,
+          realEstateTransferTaxRate: Number(
+            parsedValues.real_estate_transfer_tax_rate,
+          ),
+          brokerFeeCents: Number(parsedValues.broker_fee_cents),
+          notaryAndLandRegistryFeeCents: Number(
+            parsedValues.notary_fee_cents,
+          ) + Number(
+            parsedValues.land_registry_fee_cents,
+          ),
+          otherAcquisitionCostsCents: Number(
+            parsedValues.other_acquisition_costs_cents,
+          ),
+        });
+
+        derivedValues = {
+          land_value_cents: allocation.landValueCents,
+          building_purchase_price_cents:
+            allocation.buildingPurchasePriceCents,
+          real_estate_transfer_tax_cents:
+            allocation.realEstateTransferTaxCents,
+          acquisition_costs_cents: allocation.acquisitionCostsCents,
+          total_acquisition_cost_cents:
+            allocation.totalAcquisitionCostCents,
+          building_value_cents: allocation.buildingValueCents,
+          current_market_value_cents: purchasePriceCents,
+          market_value_status: "estimated",
+          market_value_source: "purchase_price_proxy",
+        };
+      } catch (error) {
+        if (error instanceof DomainValidationError) {
+          const domainFieldToFormField: Record<string, string> = {
+            purchasePriceCents: "purchase_price_cents",
+            landAreaSquareMeters: "land_area_sqm",
+            standardLandValueCentsPerSquareMeter:
+              "standard_land_value_cents_per_sqm",
+            landOwnershipShare: "land_ownership_share",
+            realEstateTransferTaxRate: "real_estate_transfer_tax_rate",
+            brokerFeeCents: "broker_fee_cents",
+            notaryAndLandRegistryFeeCents:
+              "notary_fee_cents",
+            otherAcquisitionCostsCents:
+              "other_acquisition_costs_cents",
+          };
+          const field = error.field
+            ? domainFieldToFormField[error.field]
+            : undefined;
+          semanticErrors[field ?? "purchase_price_cents"] = [error.message];
+        } else {
+          throw error;
+        }
+      }
+    }
   }
   if (slug === "einheiten") {
     if (
@@ -222,6 +318,7 @@ export async function createModuleRecordAction(
   const payload = {
     ...defaultsForModule(slug),
     ...parsed.data,
+    ...derivedValues,
     organization_id: viewer.organizationId,
     created_by: viewer.userId,
   };

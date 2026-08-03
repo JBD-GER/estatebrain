@@ -7,6 +7,26 @@ import {
 import { buildDashboardSnapshot } from "@/lib/dashboard/snapshot";
 
 const DEMO_DEPRECIATION_RATE = 0.02;
+const DEMO_UNIT_PROPERTY = new Map(
+  DEMO_DATA.units.map((unit) => [unit.id, unit.propertyId]),
+);
+const DEMO_LEASE_UNIT = new Map(
+  DEMO_DATA.leases.map((lease) => [lease.id, lease.unitId]),
+);
+
+function demoPropertyIdForLease(leaseId: string | null | undefined) {
+  if (!leaseId) return null;
+  const unitId = DEMO_LEASE_UNIT.get(leaseId);
+  return unitId ? DEMO_UNIT_PROPERTY.get(unitId) ?? null : null;
+}
+
+function demoClaimIdForPayment(payment: (typeof DEMO_DATA.payments)[number]) {
+  return DEMO_DATA.rentCharges.find(
+    (claim) =>
+      claim.leaseId === payment.leaseId &&
+      claim.period === payment.bookingDate.slice(0, 7),
+  )?.id ?? null;
+}
 
 function demoMonthlyDepreciationCents() {
   return sumCents(
@@ -42,6 +62,12 @@ export function getDemoDashboardSnapshot() {
       propertyId: unit.propertyId,
       label: unit.label,
       areaSquareMeters: unit.areaSquareMeters,
+      targetColdRentCents:
+        DEMO_DATA.leases.find(
+          (lease) =>
+            lease.unitId === unit.id &&
+            !["draft", "ended", "cancelled"].includes(lease.status),
+        )?.baseRentCents ?? 0,
       status: unit.status,
     })),
     leases: DEMO_DATA.leases.map((lease) => ({
@@ -67,6 +93,7 @@ export function getDemoDashboardSnapshot() {
     rentPayments: DEMO_DATA.payments
       .filter((payment) => payment.allocationStatus === "matched")
       .map((payment) => ({
+        rentClaimId: demoClaimIdForPayment(payment),
         paidOn: payment.bookingDate,
         amountCents: payment.amountCents,
         bankTransactionId: payment.id,
@@ -74,7 +101,7 @@ export function getDemoDashboardSnapshot() {
     income: DEMO_DATA.payments
       .filter((payment) => payment.allocationStatus === "matched")
       .map((payment) => ({
-        propertyId: null,
+        propertyId: demoPropertyIdForLease(payment.leaseId),
         entryDate: payment.bookingDate,
         amountCents: payment.amountCents,
         category: "rent",
@@ -84,6 +111,7 @@ export function getDemoDashboardSnapshot() {
       propertyId: expense.propertyId,
       entryDate: expense.date,
       amountCents: expense.amountCents,
+      bankTransactionId: null,
       cashEffective: expense.cashEffective,
       isInterest: expense.category === "loan_interest",
       isPrincipal: expense.category === "principal",
@@ -98,6 +126,7 @@ export function getDemoDashboardSnapshot() {
       fixedRateUntil: loan.fixedInterestEndDate,
       status: "active",
     })),
+    loanPayments: [],
     loansAvailable: true,
     unresolvedDocuments: DEMO_DATA.invoices.filter(
       (invoice) =>

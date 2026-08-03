@@ -3,6 +3,7 @@ export * from "./finance";
 export * from "./metrics";
 export * from "./money";
 export * from "./payment-matching";
+export * from "./property";
 export * from "./renovation";
 export * from "./rental";
 export * from "./tax";

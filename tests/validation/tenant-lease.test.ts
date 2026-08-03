@@ -28,6 +28,7 @@ function validForm(overrides: Record<string, string> = {}) {
     noticePeriodMonths: "3",
     dueDay: "3",
     coldRentCents: "875,40",
+    ancillaryChargeType: "advance",
     ancillaryPrepaymentCents: "210.00",
     parkingRentCents: "35",
     otherRentCents: "0",
@@ -58,6 +59,7 @@ describe("tenant lease validation", () => {
       lastName: "Mustermann",
       email: "erika@example.de",
       coldRentCents: 87_540,
+      ancillaryChargeType: "advance",
       ancillaryPrepaymentCents: 21_000,
       parkingRentCents: 3_500,
       otherRentCents: 0,
@@ -96,6 +98,22 @@ describe("tenant lease validation", () => {
     if (result.success) return;
     expect(result.error.flatten().fieldErrors[field]).toBeDefined();
   });
+
+  it("requires a zero amount when no separate ancillary charge exists", () => {
+    const result = parseTenantLeaseFormData(
+      validForm({
+        ancillaryChargeType: "none",
+        ancillaryPrepaymentCents: "210",
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(
+      result.error.flatten().fieldErrors.ancillaryPrepaymentCents,
+    ).toContain(
+      "Ohne gesonderte Nebenkosten muss der monatliche Betrag 0 € sein.",
+    );
+  });
 });
 
 describe("tenant lease RPC mapping", () => {
@@ -132,6 +150,7 @@ describe("tenant lease RPC mapping", () => {
       notice_period_months: 3,
       due_day: 3,
       cold_rent_cents: 87_540,
+      ancillary_charge_type: "advance",
       ancillary_prepayment_cents: 21_000,
       parking_rent_cents: 3_500,
       other_rent_cents: 0,

@@ -72,10 +72,13 @@ test("frisches bestätigtes Konto landet ohne Zwischenseite im Onboarding", asyn
       name: "Richten wir dein Portfolio ein",
     }),
   ).toBeVisible();
-  await expect(page.getByText("Schritt 1 von 5")).toBeVisible();
+  await expect(page.getByText("Schritt 1 von 6")).toBeVisible();
   await expect(page.getByLabel("Name der Organisation")).toHaveValue("");
   await expect(
-    page.getByRole("button", { name: "Leer starten" }),
+    page.getByText(
+      "Die Einrichtung wird erst nach der Zusammenfassung gespeichert.",
+    ),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Weiter" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Abmelden" })).toBeVisible();
 });

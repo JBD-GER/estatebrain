@@ -21,7 +21,6 @@ import {
   MessageSquareText,
   PanelTop,
   Plug,
-  ReceiptText,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -115,12 +114,6 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
         href: "/app/einnahmen",
         icon: CircleDollarSign,
         module: "einnahmen",
-      },
-      {
-        label: "Ausgaben",
-        href: "/app/ausgaben",
-        icon: ReceiptText,
-        module: "ausgaben",
       },
       {
         label: "Rechnungen & Belege",

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { OnboardingInput } from "@/lib/validation/onboarding";
 
 export const legacyOnboardingDraftKey = "estatebrain:onboarding:v1";
-export const onboardingDraftVersion = 2;
+export const onboardingDraftVersion = 3;
 
 const record = z.record(z.string(), z.unknown());
 const storedDraftSchema = z.object({
@@ -13,7 +13,9 @@ const storedDraftSchema = z.object({
     tax: record,
     property: record,
     units: z.array(record).min(1).max(100),
-    importMode: z.enum(["none", "demo"]),
+    financing: record,
+    importMode: z.literal("none"),
+    confirmation: z.boolean(),
   }),
 });
 

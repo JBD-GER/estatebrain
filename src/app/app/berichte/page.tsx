@@ -100,6 +100,7 @@ export default async function ReportsPage({
           .from("properties")
           .select("id, name, city")
           .eq("organization_id", viewer.organizationId)
+          .eq("property_mode", "existing")
           .is("archived_at", null)
           .order("name")
           .order("id")
@@ -132,11 +133,17 @@ export default async function ReportsPage({
   const initialLoadFailed = Boolean(
     propertiesResult.error || unitsResult.error || taxYearsResult.error,
   );
+  const reportPropertyIds = new Set(
+    (propertiesResult.data ?? []).map((property) => property.id),
+  );
+  const reportUnits = (unitsResult.data ?? []).filter((unit) =>
+    reportPropertyIds.has(unit.property_id),
+  );
   const scopeResolution = resolveReportScope({
     propertyParam: params.property,
     unitParam: params.unit,
     properties: propertiesResult.data ?? [],
-    units: unitsResult.data ?? [],
+    units: reportUnits,
   });
   if (initialLoadFailed || !scopeResolution.scope) {
     return (
@@ -164,6 +171,59 @@ export default async function ReportsPage({
   const scope = scopeResolution.scope;
   const propertyId = scope.propertyId;
   const unitId = scope.unitId;
+  const scopeUnitIds = reportUnits
+    .filter(
+      (unit) =>
+        (!propertyId || unit.property_id === propertyId) &&
+        (!unitId || unit.id === unitId),
+    )
+    .map((unit) => unit.id);
+  const rentLeaseResult = scopeUnitIds.length
+    ? await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from("leases")
+            .select("id")
+            .eq("organization_id", viewer.organizationId)
+            .in("unit_id", scopeUnitIds)
+            .is("archived_at", null)
+            .order("id")
+            .range(from, to),
+        { label: "Mietverhältnisse für Mietzahlungen" },
+      )
+    : { data: [], error: null };
+  const rentLeaseIds = (rentLeaseResult.data ?? []).map((lease) => lease.id);
+  const rentClaimResult = rentLeaseIds.length
+    ? await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from("rent_claims")
+            .select("id")
+            .eq("organization_id", viewer.organizationId)
+            .in("lease_id", rentLeaseIds)
+            .order("id")
+            .range(from, to),
+        { label: "Mietforderungen für Mietzahlungen" },
+      )
+    : { data: [], error: null };
+  const rentClaimIds = (rentClaimResult.data ?? []).map((claim) => claim.id);
+  const rentPaymentResult = rentClaimIds.length
+    ? await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from("rent_payments")
+            .select("amount_cents, bank_transaction_id")
+            .eq("organization_id", viewer.organizationId)
+            .in("rent_claim_id", rentClaimIds)
+            .eq("allocation_status", "confirmed")
+            .gte("paid_on", start)
+            .lt("paid_on", end)
+            .order("paid_on")
+            .order("id")
+            .range(from, to),
+        { label: "Bestätigte Mietzahlungen" },
+      )
+    : { data: [], error: null };
 
   const selectedTaxYear = (taxYearsResult.data ?? []).find(
     (taxYear) => taxYear.year === year,
@@ -180,7 +240,7 @@ export default async function ReportsPage({
       (from, to) => {
         let query = supabase
           .from("income_entries")
-          .select("amount_cents, payment_status")
+          .select("amount_cents, payment_status, bank_transaction_id")
           .eq("organization_id", viewer.organizationId)
           .is("archived_at", null)
           .gte("entry_date", start)
@@ -266,6 +326,9 @@ export default async function ReportsPage({
 
   const failed = [
     taxProfileResult,
+    rentLeaseResult,
+    rentClaimResult,
+    rentPaymentResult,
     incomeResult,
     expenseResult,
     documentsResult,
@@ -276,9 +339,25 @@ export default async function ReportsPage({
   const income = incomeResult.data ?? [];
   const expenses = expenseResult.data ?? [];
   const documents = documentsResult.data ?? [];
-  const paidIncomeCents = income
-    .filter((entry) => entry.payment_status === "paid")
-    .reduce((sum, entry) => sum + Number(entry.amount_cents), 0);
+  const rentPayments = rentPaymentResult.data ?? [];
+  const rentPaymentBankIds = new Set(
+    rentPayments
+      .map((payment) => payment.bank_transaction_id)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const paidIncomeCents =
+    rentPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount_cents),
+      0,
+    ) +
+    income
+      .filter(
+        (entry) =>
+          entry.payment_status === "paid" &&
+          (!entry.bank_transaction_id ||
+            !rentPaymentBankIds.has(entry.bank_transaction_id)),
+      )
+      .reduce((sum, entry) => sum + Number(entry.amount_cents), 0);
   const paidExpenseCents = expenses
     .filter((entry) => entry.payment_status === "paid")
     .reduce((sum, entry) => sum + Number(entry.amount_cents), 0);
@@ -310,7 +389,7 @@ export default async function ReportsPage({
       ...(taxYearsResult.data ?? []).map((taxYear) => taxYear.year),
     ]),
   ).sort((a, b) => b - a);
-  const filteredUnits = (unitsResult.data ?? []).filter(
+  const filteredUnits = reportUnits.filter(
     (unit) => !propertyId || unit.property_id === propertyId,
   );
   const exportQuery = reportScopeSearchParams(year, scope);
@@ -487,7 +566,7 @@ export default async function ReportsPage({
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ["Bezahlte Einnahmen", money(paidIncomeCents)],
+          ["Bezahlte Einnahmen inkl. Miete", money(paidIncomeCents)],
           ["Bezahlte Ausgaben", money(paidExpenseCents)],
           ["Saldo vor Steuerwirkung", money(paidIncomeCents - paidExpenseCents)],
           [

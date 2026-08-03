@@ -382,7 +382,9 @@ export function CreateTenantLeaseForm({
               Miete & Kaution
             </legend>
             <div className="grid gap-2">
-              <Label htmlFor="coldRentCents">Kaltmiete *</Label>
+              <Label htmlFor="coldRentCents">
+                Vertrags-Kaltmiete (mtl.) *
+              </Label>
               <Input
                 id="coldRentCents"
                 name="coldRentCents"
@@ -397,8 +399,25 @@ export function CreateTenantLeaseForm({
               <FieldError field="coldRentCents" state={state} />
             </div>
             <div className="grid gap-2">
+              <Label htmlFor="ancillaryChargeType">Nebenkostenart *</Label>
+              <select
+                id="ancillaryChargeType"
+                name="ancillaryChargeType"
+                defaultValue="advance"
+                className={selectClassName}
+                required
+                aria-invalid={Boolean(state.errors?.ancillaryChargeType)}
+                aria-describedby={describedBy("ancillaryChargeType", state)}
+              >
+                <option value="advance">Vorauszahlung</option>
+                <option value="flat_rate">Betriebskostenpauschale</option>
+                <option value="none">Keine gesonderten Nebenkosten</option>
+              </select>
+              <FieldError field="ancillaryChargeType" state={state} />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="ancillaryPrepaymentCents">
-                Nebenkosten *
+                Nebenkostenbetrag (mtl.) *
               </Label>
               <Input
                 id="ancillaryPrepaymentCents"
@@ -418,7 +437,9 @@ export function CreateTenantLeaseForm({
               <FieldError field="ancillaryPrepaymentCents" state={state} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="parkingRentCents">Stellplatz *</Label>
+              <Label htmlFor="parkingRentCents">
+                Stellplatzmiete (mtl.) *
+              </Label>
               <Input
                 id="parkingRentCents"
                 name="parkingRentCents"
@@ -434,7 +455,9 @@ export function CreateTenantLeaseForm({
               <FieldError field="parkingRentCents" state={state} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="otherRentCents">Sonstige Bestandteile *</Label>
+              <Label htmlFor="otherRentCents">
+                Sonstige Mietbestandteile (mtl.) *
+              </Label>
               <Input
                 id="otherRentCents"
                 name="otherRentCents"

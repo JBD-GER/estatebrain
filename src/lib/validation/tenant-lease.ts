@@ -122,16 +122,19 @@ export const tenantLeaseFormSchema = z
     ),
     coldRentCents: moneyInput({
       minimumCents: 1,
-      requiredMessage: "Bitte gib die Kaltmiete ein.",
+      requiredMessage: "Bitte gib die monatliche Vertrags-Kaltmiete ein.",
+    }),
+    ancillaryChargeType: z.enum(["advance", "flat_rate", "none"], {
+      error: "Bitte wähle die Nebenkostenart aus.",
     }),
     ancillaryPrepaymentCents: moneyInput({
-      requiredMessage: "Bitte gib die Nebenkostenvorauszahlung ein.",
+      requiredMessage: "Bitte gib den monatlichen Nebenkostenbetrag ein.",
     }),
     parkingRentCents: moneyInput({
-      requiredMessage: "Bitte gib die Stellplatzmiete ein.",
+      requiredMessage: "Bitte gib die monatliche Stellplatzmiete ein.",
     }),
     otherRentCents: moneyInput({
-      requiredMessage: "Bitte gib sonstige Mietbestandteile ein.",
+      requiredMessage: "Bitte gib monatliche sonstige Mietbestandteile ein.",
     }),
     depositCents: moneyInput({
       requiredMessage: "Bitte gib die Kaution ein.",
@@ -166,6 +169,17 @@ export const tenantLeaseFormSchema = z
         message: "Das Mietende darf nicht vor dem Mietbeginn liegen.",
       });
     }
+    if (
+      value.ancillaryChargeType === "none" &&
+      value.ancillaryPrepaymentCents !== 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["ancillaryPrepaymentCents"],
+        message:
+          "Ohne gesonderte Nebenkosten muss der monatliche Betrag 0 € sein.",
+      });
+    }
   });
 
 export type TenantLeaseInput = z.infer<typeof tenantLeaseFormSchema>;
@@ -190,6 +204,7 @@ export type CreateTenantLeasePayload = {
   notice_period_months: number;
   due_day: number;
   cold_rent_cents: number;
+  ancillary_charge_type: "advance" | "flat_rate" | "none";
   ancillary_prepayment_cents: number;
   parking_rent_cents: number;
   other_rent_cents: number;
@@ -216,6 +231,7 @@ export function parseTenantLeaseFormData(formData: FormData) {
     noticePeriodMonths: formText(formData, "noticePeriodMonths"),
     dueDay: formText(formData, "dueDay"),
     coldRentCents: formText(formData, "coldRentCents"),
+    ancillaryChargeType: formText(formData, "ancillaryChargeType"),
     ancillaryPrepaymentCents: formText(
       formData,
       "ancillaryPrepaymentCents",
@@ -250,6 +266,7 @@ export function toCreateTenantLeasePayload(
     notice_period_months: input.noticePeriodMonths,
     due_day: input.dueDay,
     cold_rent_cents: input.coldRentCents,
+    ancillary_charge_type: input.ancillaryChargeType,
     ancillary_prepayment_cents: input.ancillaryPrepaymentCents,
     parking_rent_cents: input.parkingRentCents,
     other_rent_cents: input.otherRentCents,

@@ -81,6 +81,7 @@ export default async function RentPage({
             .from("properties")
             .select("id, name, street, house_number, postal_code, city")
             .eq("organization_id", data.viewer.organizationId)
+            .eq("property_mode", "existing")
             .eq("status", "active")
             .is("archived_at", null)
             .order("name"),
@@ -125,7 +126,7 @@ export default async function RentPage({
         value: String(unit.id),
         label: `${unit.unit_number || "Einheit"} · ${
           unit.status === "reserved" ? "reserviert" : "frei"
-        } · Zielmiete ${euro.format(
+        } · Markt-/SOLL-Kaltmiete (mtl.) ${euro.format(
           Number(unit.target_cold_rent_cents) / 100,
         )}`,
       });
