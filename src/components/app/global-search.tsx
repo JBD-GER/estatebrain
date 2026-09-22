@@ -38,6 +38,14 @@ type SearchResult = {
 
 const quickLinks: SearchResult[] = [
   {
+    id: "quick-tax-comparison",
+    type: "Schnellzugriff",
+    title: "Immobilien steuerlich vergleichen",
+    subtitle: "AfA, Denkmal und jährliche Steuerwirkung",
+    href: "/app",
+    module: "steuern",
+  },
+  {
     id: "quick-property",
     type: "Schnellzugriff",
     title: "Immobilien öffnen",

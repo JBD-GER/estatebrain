@@ -39,6 +39,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      investment_scenarios: {
+        Row: {
+          id: string
+          organization_id: string
+          name: string
+          input: Json
+          selected_method: string
+          schema_version: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          name: string
+          input: Json
+          selected_method?: string
+          schema_version?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          name?: string
+          input?: Json
+          selected_method?: string
+          schema_version?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investment_scenarios_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string

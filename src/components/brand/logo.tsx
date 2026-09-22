@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Building2, BrainCircuit } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function BrandLogo({
@@ -25,21 +24,43 @@ export function BrandLogo({
     >
       <span
         className={cn(
-          "relative grid size-9 place-items-center rounded-xl shadow-sm",
+          "relative grid size-9 place-items-center rounded-[10px]",
           inverted
             ? "bg-sidebar-primary text-sidebar-primary-foreground"
             : "bg-primary text-primary-foreground",
         )}
       >
-        <Building2 className="size-5" aria-hidden="true" />
-        <BrainCircuit
-          className="absolute -bottom-1 -right-1 size-4 rounded-full bg-card p-0.5 text-primary shadow-sm"
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          className="size-[22px]"
           aria-hidden="true"
-        />
+        >
+          <path
+            d="M5 19V8l7-4 7 4v11H5Z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M9 19v-5h6v5M9 9v1.5M15 9v1.5M12 6.5V10"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
       </span>
       {compact ? null : (
-        <span className="text-lg">
-          Estate <span className="text-primary">Brain</span>
+        <span className="text-[18px] tracking-[-0.04em]">
+          Estate Brain
+          <span
+            className={cn(
+              "ml-0.5",
+              inverted ? "text-sidebar-primary" : "text-[#88a467]",
+            )}
+          >
+            .
+          </span>
         </span>
       )}
     </Link>

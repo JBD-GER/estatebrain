@@ -10,7 +10,25 @@ const authPrefixes = [
   "/passwort-vergessen",
 ];
 
+const publicPaths = new Set([
+  "/",
+  "/rechner",
+  "/demo",
+  "/impressum",
+  "/datenschutz",
+  "/nutzungsbedingungen",
+  "/robots.txt",
+  "/sitemap.xml",
+]);
+
 export async function updateSession(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  // Marketing, the portfolio demo and the legacy calculator redirect do not
+  // need a Supabase session. Authenticated dashboards stay protected below.
+  if (publicPaths.has(path) || path.startsWith("/demo/")) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
   const { url, publishableKey } = getSupabaseConfig();
 
@@ -33,7 +51,6 @@ export async function updateSession(request: NextRequest) {
 
   const { data } = await supabase.auth.getClaims();
   const isAuthenticated = Boolean(data?.claims?.sub);
-  const path = request.nextUrl.pathname;
   const isProtected = protectedPrefixes.some((prefix) =>
     path.startsWith(prefix),
   );

@@ -26,7 +26,7 @@ const navigation = [
 
 export function MarketingHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b border-[#dce7e3]/80 bg-[#fbfdfc]/90 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-[#dce7e3]/80 bg-[#f6f7f4]/90 backdrop-blur-xl">
       <div className="mx-auto flex h-[72px] w-full max-w-7xl items-center justify-between px-5 sm:px-8 lg:px-10">
         <Brand />
 
@@ -35,7 +35,7 @@ export function MarketingHeader() {
             <Link
               key={item.label}
               href={item.href}
-              className="rounded-lg px-3 py-2 text-[13px] font-medium text-[#49615d] transition-colors hover:bg-[#eef5f2] hover:text-[#12352f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              className="rounded-lg px-3 py-2 text-[13px] font-medium text-[#49615d] transition-colors hover:bg-[#eef5f2] hover:text-[#173f35] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
             >
               {item.label}
             </Link>
@@ -52,7 +52,7 @@ export function MarketingHeader() {
           </Button>
           <Button
             asChild
-            className="h-10 rounded-xl bg-[#12352f] px-4 text-white shadow-sm hover:bg-[#1b4b43]"
+            className="h-10 rounded-xl bg-[#173f35] px-4 text-white shadow-sm hover:bg-[#1b4b43]"
           >
             <Link href="/registrieren">Kostenlos starten</Link>
           </Button>
@@ -63,7 +63,7 @@ export function MarketingHeader() {
             <Button
               variant="ghost"
               size="icon-lg"
-              className="rounded-xl text-[#12352f] hover:bg-[#eef5f2] lg:hidden"
+              className="rounded-xl text-[#173f35] hover:bg-[#eef5f2] lg:hidden"
               aria-label="Navigation öffnen"
             >
               <Menu aria-hidden="true" className="size-5" />
@@ -72,7 +72,7 @@ export function MarketingHeader() {
           <SheetContent
             side="right"
             showCloseButton={false}
-            className="w-[min(88vw,24rem)] border-[#dce7e3] bg-[#fbfdfc] p-0"
+            className="w-[min(88vw,24rem)] border-[#dce7e3] bg-[#f6f7f4] p-0"
           >
             <SheetHeader className="border-b border-[#dce7e3] px-6 py-5 text-left">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
@@ -85,7 +85,7 @@ export function MarketingHeader() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="rounded-xl text-[#12352f]"
+                    className="rounded-xl text-[#173f35]"
                     aria-label="Navigation schließen"
                   >
                     <X aria-hidden="true" className="size-5" />
@@ -113,7 +113,7 @@ export function MarketingHeader() {
                 <Button
                   asChild
                   variant="outline"
-                  className="h-11 rounded-xl border-[#cbdcd6] bg-white text-[#12352f]"
+                  className="h-11 rounded-xl border-[#cbdcd6] bg-white text-[#173f35]"
                 >
                   <Link href="/login">Login</Link>
                 </Button>
@@ -121,7 +121,7 @@ export function MarketingHeader() {
               <SheetClose asChild>
                 <Button
                   asChild
-                  className="h-11 rounded-xl bg-[#12352f] text-white hover:bg-[#1b4b43]"
+                  className="h-11 rounded-xl bg-[#173f35] text-white hover:bg-[#1b4b43]"
                 >
                   <Link href="/registrieren">Kostenlos starten</Link>
                 </Button>

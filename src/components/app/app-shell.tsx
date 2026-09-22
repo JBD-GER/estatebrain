@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   Banknote,
   BarChart3,
@@ -41,6 +42,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -50,14 +52,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { Viewer } from "@/lib/auth/dal";
-import {
-  canAccessModule,
-  type OrganizationRole,
-} from "@/lib/auth/permissions";
-import {
-  signOutAction,
-  switchOrganizationAction,
-} from "@/app/(auth)/actions";
+import { canAccessModule, type OrganizationRole } from "@/lib/auth/permissions";
+import { signOutAction, switchOrganizationAction } from "@/app/(auth)/actions";
 import { GlobalSearch } from "@/components/app/global-search";
 
 type Icon = React.ComponentType<{ className?: string }>;
@@ -71,9 +67,15 @@ type NavItem = {
 
 const navGroups: Array<{ label: string; items: NavItem[] }> = [
   {
+    label: "Arbeitsbereich",
+    items: [
+      { label: "Dashboard", href: "/app", icon: LayoutDashboard },
+      { label: "Portfolio-Übersicht", href: "/app/uebersicht", icon: ChartNoAxesCombined, module: "portfolio" },
+    ],
+  },
+  {
     label: "Portfolio",
     items: [
-      { label: "Übersicht", href: "/app", icon: LayoutDashboard },
       {
         label: "Portfolio",
         href: "/app/portfolio",
@@ -134,7 +136,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
         module: "finanzierungen",
       },
       {
-        label: "Steuern",
+        label: "Steuerübersicht",
         href: "/app/steuern",
         icon: Calculator,
         module: "steuern",
@@ -241,10 +243,10 @@ function Navigation({
     .filter((group) => group.items.length > 0);
 
   return (
-    <nav aria-label="Hauptnavigation" className="space-y-6 px-3 py-5">
+    <nav aria-label="Hauptnavigation" className="space-y-5 px-3 py-5">
       {visibleGroups.map((group) => (
         <div key={group.label}>
-          <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/45">
+          <p className="mb-2 px-3 text-[9px] font-medium uppercase tracking-[0.18em] text-sidebar-foreground/50">
             {group.label}
           </p>
           <div className="space-y-1">
@@ -260,7 +262,7 @@ function Navigation({
                   onClick={onNavigate}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "group flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
+                    "group flex min-h-10 items-center gap-3 rounded-lg px-3 text-[13px] transition-colors",
                     active
                       ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -281,7 +283,7 @@ function Navigation({
 function Sidebar({ role }: { role: OrganizationRole | null }) {
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex lg:flex-col">
-      <div className="flex h-18 items-center px-6">
+      <div className="flex h-20 items-center px-6">
         <BrandLogo href="/app" inverted />
       </div>
       <Separator className="bg-sidebar-border" />
@@ -293,9 +295,9 @@ function Sidebar({ role }: { role: OrganizationRole | null }) {
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-sidebar-primary" />
             <div>
-              <p className="text-xs font-medium">Geschützte Finanzdaten</p>
+              <p className="text-xs font-medium">Dein Arbeitsbereich</p>
               <p className="mt-1 text-[11px] leading-4 text-sidebar-foreground/55">
-                Organisationsbezogene Zugriffe und sichere Dokumentablage.
+                Immobilien, Steuern und Unterlagen an einem Ort.
               </p>
             </div>
           </div>
@@ -347,7 +349,10 @@ function OrganizationSwitcher({ viewer }: { viewer: Viewer }) {
         <DropdownMenuLabel>Organisation wechseln</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {viewer.memberships.map((membership) => (
-          <form action={switchOrganizationAction} key={membership.organizationId}>
+          <form
+            action={switchOrganizationAction}
+            key={membership.organizationId}
+          >
             <input
               type="hidden"
               name="organizationId"
@@ -389,7 +394,9 @@ function UserMenu({ viewer }: { viewer: Viewer }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuLabel>
-          <span className="block truncate">{viewer.fullName ?? "Mein Konto"}</span>
+          <span className="block truncate">
+            {viewer.fullName ?? "Mein Konto"}
+          </span>
           <span className="block truncate text-xs font-normal text-muted-foreground">
             {viewer.email}
           </span>
@@ -401,8 +408,7 @@ function UserMenu({ viewer }: { viewer: Viewer }) {
             Profil & Einstellungen
           </Link>
         </DropdownMenuItem>
-        {viewer.role &&
-        canAccessModule(viewer.role, "integrationen") ? (
+        {viewer.role && canAccessModule(viewer.role, "integrationen") ? (
           <DropdownMenuItem asChild>
             <Link href="/app/integrationen">
               <Plug />
@@ -431,12 +437,16 @@ export function AppShell({
   viewer: Viewer;
   children: React.ReactNode;
 }) {
+  const [navigationOpen, setNavigationOpen] = useState(false);
   return (
-    <div className="min-h-screen bg-muted/35">
+    <div className="min-h-screen bg-background">
+      <a className="skip-link" href="#app-inhalt">
+        Zum Inhalt springen
+      </a>
       <Sidebar role={viewer.role} />
       <div className="lg:pl-72">
-        <header className="sticky top-0 z-30 flex h-18 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6">
-          <Sheet>
+        <header className="sticky top-0 z-30 flex h-20 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:px-6 xl:px-8">
+          <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
             <SheetTrigger asChild>
               <Button
                 variant="outline"
@@ -447,14 +457,23 @@ export function AppShell({
                 <Menu className="size-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-80 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground">
-              <SheetHeader className="h-18 border-b border-sidebar-border px-6 py-0">
+            <SheetContent
+              side="left"
+              className="w-80 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
+            >
+              <SheetHeader className="h-20 border-b border-sidebar-border px-6 py-0">
                 <SheetTitle className="flex h-full items-center">
                   <BrandLogo href="/app" inverted />
                 </SheetTitle>
+                <SheetDescription className="sr-only">
+                  Navigation durch deinen Immobilien-Arbeitsbereich.
+                </SheetDescription>
               </SheetHeader>
-              <ScrollArea className="h-[calc(100dvh-4.5rem)]">
-                <Navigation role={viewer.role} />
+              <ScrollArea className="h-[calc(100dvh-5rem)]">
+                <Navigation
+                  role={viewer.role}
+                  onNavigate={() => setNavigationOpen(false)}
+                />
               </ScrollArea>
             </SheetContent>
           </Sheet>
@@ -464,7 +483,13 @@ export function AppShell({
           <GlobalSearch role={viewer.role} />
           <UserMenu viewer={viewer} />
         </header>
-        <main className="min-w-0 p-4 sm:p-6 xl:p-8">{children}</main>
+        <main
+          id="app-inhalt"
+          tabIndex={-1}
+          className="min-w-0 p-4 outline-none sm:p-6 xl:p-8"
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

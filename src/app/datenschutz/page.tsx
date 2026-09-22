@@ -86,6 +86,7 @@ const sections: LegalSection[] = [
   {
     heading: "Cookies und lokale Speicherung",
     paragraphs: [
+      "Der Steuervergleich ist nur im angemeldeten Dashboard verfügbar. Berechnungen mit den eingegebenen Annahmen erfolgen im Browser. Erst mit der Funktion „Szenario speichern“ werden Name, Annahmen und gewähltes Abschreibungsmodell in der Datenbank gespeichert, der jeweiligen Organisation zugeordnet und für berechtigte Mitglieder verfügbar. Szenarien können im Bereich „Gespeichert“ wieder gelöscht werden. Der Steuervergleich legt keine Szenarien im lokalen Browserspeicher ab.",
       "Technisch notwendige Cookies oder vergleichbare Speichertechniken können für Anmeldung, Sicherheit und Spracheinstellungen eingesetzt werden. Nicht notwendige Analyse-, Marketing- oder Komfortdienste dürfen erst nach einer wirksamen Einwilligung verwendet werden. Die tatsächlich eingesetzten Technologien und deren Laufzeiten sind hier zu dokumentieren: [Liste ergänzen].",
     ],
   },

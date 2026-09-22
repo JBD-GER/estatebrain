@@ -345,7 +345,7 @@ export const onboardingSchema = z
         code: "custom",
         path: ["property", "standardLandValue"],
         message:
-          "Der Grundstücksanteil darf die gesamten Anschaffungskosten nicht übersteigen.",
+          "Der Grundstücksanteil darf den Kaufpreis nicht übersteigen.",
       });
     }
 

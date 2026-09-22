@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { CircleAlert, CircleCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Calculator, CircleAlert, CircleCheck } from "lucide-react";
 import { ModuleWorkspace } from "@/components/app/module-workspace";
 import { TaxProfileForm } from "@/components/tax/tax-profile-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -43,6 +44,12 @@ export default async function TaxPage({
 
   const notice = (
     <div className="space-y-5">
+      <Link href="/app" className="flex items-center gap-4 rounded-2xl bg-primary p-6 text-primary-foreground transition hover:opacity-95">
+        <Calculator className="size-7 shrink-0" />
+        <div><h2 className="font-semibold">Wie unterscheiden sich deine Immobilien steuerlich?</h2><p className="mt-1 text-xs opacity-80">Bestand, Neubau und Denkmal mit jährlichem AfA-Plan vergleichen.</p></div>
+        <ArrowRight className="ml-auto size-5 shrink-0" />
+      </Link>
+      <p className="rounded-xl border bg-card p-4 text-xs leading-relaxed text-muted-foreground">Bei älteren automatisch berechneten AfA-Basen bitte die Kaufpreisaufteilung prüfen: Auch die auf Grund und Boden entfallenden Kaufnebenkosten sind nicht abschreibbar. Bereits gespeicherte oder manuell geprüfte Werte werden nicht automatisch geändert.</p>
       {result === "saved" ? (
         <Alert>
           <CircleCheck />

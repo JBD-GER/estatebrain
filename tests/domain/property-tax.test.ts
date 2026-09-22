@@ -47,8 +47,49 @@ describe("Immobilien-Stammdaten", () => {
       realEstateTransferTaxCents: 3_000_000,
       acquisitionCostsCents: 5_785_000,
       totalAcquisitionCostCents: 55_785_000,
-      buildingValueCents: 39_785_000,
+      landAcquisitionCostsCents: 1_851_200,
+      buildingAcquisitionCostsCents: 3_933_800,
+      totalLandValueCents: 17_851_200,
+      buildingValueCents: 37_933_800,
     });
+  });
+
+  it("schreibt bei einem reinen Grundstück auch die Nebenkosten nicht ab", () => {
+    const allocation = calculateAcquisitionAllocation({
+      purchasePriceCents: 10_000_000,
+      landAreaSquareMeters: 100,
+      standardLandValueCentsPerSquareMeter: 100_000,
+      realEstateTransferTaxRate: 0.06,
+      brokerFeeCents: 300_000,
+      notaryAndLandRegistryFeeCents: 200_000,
+    });
+    expect(allocation.buildingValueCents).toBe(0);
+    expect(allocation.totalLandValueCents).toBe(allocation.totalAcquisitionCostCents);
+  });
+
+  it("lässt Nebenkosten einen Grundstückswert über dem Kaufpreis nicht verdecken", () => {
+    expect(() => calculateAcquisitionAllocation({
+      purchasePriceCents: 10_000_000,
+      landAreaSquareMeters: 101,
+      standardLandValueCentsPerSquareMeter: 100_000,
+      realEstateTransferTaxRate: 0.06,
+      brokerFeeCents: 300_000,
+      notaryAndLandRegistryFeeCents: 200_000,
+    })).toThrow(/Kaufpreis nicht übersteigen/);
+  });
+
+  it("erhält bei einer ungeraden Centaufteilung sämtliche Anschaffungskosten", () => {
+    const allocation = calculateAcquisitionAllocation({
+      purchasePriceCents: 3,
+      landAreaSquareMeters: 1,
+      standardLandValueCentsPerSquareMeter: 1,
+      realEstateTransferTaxRate: 0,
+      brokerFeeCents: 2,
+      notaryAndLandRegistryFeeCents: 0,
+    });
+    expect(allocation.landAcquisitionCostsCents).toBe(1);
+    expect(allocation.buildingAcquisitionCostsCents).toBe(1);
+    expect(allocation.totalLandValueCents + allocation.buildingValueCents).toBe(5);
   });
 });
 

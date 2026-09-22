@@ -144,10 +144,10 @@ const faqs = [
 
 export function LandingPage() {
   return (
-    <div lang="de" className="min-h-screen overflow-x-clip bg-[#fbfdfc] text-[#102a2a]">
+    <div lang="de" className="min-h-screen overflow-x-clip bg-[#f6f7f4] text-[#102a2a]">
       <a
         href="#hauptinhalt"
-        className="fixed left-4 top-3 z-[60] -translate-y-20 rounded-lg bg-[#12352f] px-4 py-2 text-sm font-medium text-white transition-transform focus:translate-y-0"
+        className="fixed left-4 top-3 z-[60] -translate-y-20 rounded-lg bg-[#173f35] px-4 py-2 text-sm font-medium text-white transition-transform focus:translate-y-0"
       >
         Zum Inhalt springen
       </a>
@@ -177,7 +177,7 @@ export function LandingPage() {
 
 function HeroSection() {
   return (
-    <section className="relative isolate overflow-hidden border-b border-[#dce7e3] bg-[linear-gradient(135deg,#edf7f3_0%,#fbfdfc_48%,#f5f4ec_100%)]">
+    <section className="relative isolate overflow-hidden border-b border-[#dce7e3] bg-[linear-gradient(135deg,#edf7f3_0%,#f6f7f4_48%,#f5f4ec_100%)]">
       <div
         aria-hidden="true"
         className="absolute -left-24 top-16 -z-10 size-80 rounded-full bg-emerald-200/25 blur-3xl"
@@ -203,7 +203,7 @@ function HeroSection() {
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <Button
               asChild
-              className="h-12 rounded-xl bg-[#12352f] px-6 text-base text-white shadow-[0_12px_30px_-14px_rgba(18,53,47,0.7)] hover:bg-[#1b4b43]"
+              className="h-12 rounded-xl bg-[#173f35] px-6 text-base text-white shadow-[0_12px_30px_-14px_rgba(18,53,47,0.7)] hover:bg-[#1b4b43]"
             >
               <Link href="/registrieren">
                 Kostenlos starten
@@ -213,7 +213,7 @@ function HeroSection() {
             <Button
               asChild
               variant="outline"
-              className="h-12 rounded-xl border-[#c8d9d3] bg-white/70 px-6 text-base text-[#12352f] shadow-sm hover:bg-white"
+              className="h-12 rounded-xl border-[#c8d9d3] bg-white/70 px-6 text-base text-[#173f35] shadow-sm hover:bg-white"
             >
               <Link href="/demo">Demo ansehen</Link>
             </Button>
@@ -325,7 +325,7 @@ function BenefitsSection() {
               className="group border-0 bg-white py-6 shadow-[0_20px_55px_-46px_rgba(17,65,55,0.55)] ring-1 ring-[#dce7e3] transition-transform duration-300 hover:-translate-y-1"
             >
               <CardHeader className="gap-5 px-6">
-                <span className="grid size-11 place-items-center rounded-2xl bg-[#e9f4f0] text-[#1b6856] transition-colors group-hover:bg-[#12352f] group-hover:text-white">
+                <span className="grid size-11 place-items-center rounded-2xl bg-[#e9f4f0] text-[#1b6856] transition-colors group-hover:bg-[#173f35] group-hover:text-white">
                   <benefit.icon aria-hidden="true" className="size-5" />
                 </span>
                 <CardTitle className="text-lg tracking-[-0.02em] text-[#183b35]">
@@ -541,7 +541,7 @@ function PaymentSection() {
                 ))}
               </div>
               <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-                <span className="inline-flex h-10 items-center justify-center rounded-xl bg-[#12352f] px-4 text-sm font-medium text-white">
+                <span className="inline-flex h-10 items-center justify-center rounded-xl bg-[#173f35] px-4 text-sm font-medium text-white">
                   Zuordnung bestätigen
                 </span>
                 <span className="inline-flex h-10 items-center justify-center rounded-xl border border-[#cfddd8] bg-white px-4 text-sm font-medium text-[#38554f]">
@@ -1178,7 +1178,7 @@ function FinalCta() {
         <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
           <Button
             asChild
-            className="h-12 rounded-xl bg-white px-6 text-base text-[#12352f] hover:bg-emerald-50"
+            className="h-12 rounded-xl bg-white px-6 text-base text-[#173f35] hover:bg-emerald-50"
           >
             <Link href="/registrieren">
               Kostenlos starten

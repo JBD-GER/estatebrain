@@ -1,11 +1,15 @@
 # Estate Brain
 
-Estate Brain ist eine deutschsprachige, mandantenfähige SaaS-Anwendung für die Verwaltung und wirtschaftliche Steuerung von Immobilienportfolios. Sie bündelt Objekt- und Einheitsdaten, Mietverhältnisse, Zahlungsflüsse, Belege, Finanzierungen, Steuerannahmen, Sanierungen, Aufgaben und Kommunikation in einer Oberfläche.
+Estate Brain ist eine deutschsprachige App für den steuerlichen Vergleich von Immobilieninvestitionen und die Verwaltung von Immobilienportfolios. Im Mittelpunkt stehen nachvollziehbare Abschreibungspläne für Bestand, Neubau und Denkmal. Objekt- und Einheitsdaten, Mietverhältnisse, Zahlungsflüsse, Belege und Finanzierungen ergänzen den Vergleich.
 
 Die Anwendung trennt echte Organisationsdaten konsequent von der öffentlichen, vollständig fiktiven Demo. Steuerliche Auswertungen sind Schätzungen auf Basis transparenter Annahmen und ersetzen keine Steuerberatung.
 
 ## Funktionsumfang
 
+- Steuer-Dashboard direkt nach der Anmeldung unter `/app`: bis zu drei Szenarien, Live-Berechnung, Diagramm, Jahresplan, Rechenweg und CSV-Export
+- lineare Gebäude-AfA (2 / 2,5 / 3 %), begünstigte degressive AfA (5 %), optional § 7b sowie Denkmalregeln nach § 7i und § 10f
+- Prüfung von Fördervoraussetzungen, monatsgenauer AfA-Beginn und getrennte Bemessungsgrundlagen für Grundstück, Gebäude und Denkmalmaßnahmen
+- Szenarien im Dashboard organisationsbezogen in Supabase speichern; bestehende Portfolio-Übersicht unter `/app/uebersicht`
 - öffentliche Landingpage, Authentifizierung, Einladungen und geführtes Onboarding
 - Multi-Tenancy mit Organisationswechsel, Rollenmodell und Row Level Security
 - Portfolio-, Immobilien-, Einheiten- und Mietvertragsverwaltung
@@ -15,7 +19,7 @@ Die Anwendung trennt echte Organisationsdaten konsequent von der öffentlichen, 
 - Dashboard mit Cashflow-, Rendite-, Leerstands- und Finanzierungskennzahlen
 - globale Suche sowie CSV-Exporte
 - eingeschränktes Mieterportal
-- öffentliche Demo unter `/demo` ohne Anmeldung und ohne echte Personen- oder Bankdaten
+- öffentliche Portfolio-Demo unter `/demo` ohne Anmeldung und ohne echte Personen- oder Bankdaten; der Steuervergleich ist nur im angemeldeten Dashboard verfügbar
 
 Externe Anbieter für Team-Einladungen, Open Banking, OCR, Markt- und
 Geodaten sind optionale Integrationen. Ohne Provider-Konfiguration bleiben
@@ -50,6 +54,13 @@ Für Details zu Datenfluss und Sicherheitsgrenzen siehe [docs/ARCHITECTURE.md](d
 Die Supabase CLI ist als Entwicklungsabhängigkeit enthalten und wird über `npx supabase` ausgeführt.
 
 ## Lokale Einrichtung
+
+Die Landingpage und die fiktive Portfolio-Demo funktionieren auch ohne lokale
+Supabase-Konfiguration. Für das Steuer-Dashboard und die Anmeldung werden die unten
+genannten Variablen benötigt. Bei Vercel können diese direkt im Projekt für
+Preview und Production hinterlegt werden; eine lokale `.env.local` ist für den
+Remote-Build nicht erforderlich. Für dieses Update werden keine neuen Secrets
+benötigt.
 
 ```bash
 git clone https://github.com/JBD-GER/estatebrain.git
@@ -152,7 +163,20 @@ Organisationswert ist nie alleinige Berechtigungsgrundlage.
 
 ## Demo
 
-Die öffentliche Route `/demo` verwendet nur fest definierte, als Demo markierte Daten. Namen, Adressen, Kontodaten, Verträge und Kennzahlen sind fiktiv. Es werden dort keine Nutzerdaten gespeichert.
+Die öffentliche Route `/demo` zeigt ausschließlich fiktive Portfolio-Daten. Der interaktive Steuervergleich befindet sich im geschützten Dashboard unter `/app` und speichert Szenarien nach ausdrücklichem Klick in der jeweiligen Organisation. Es gibt keinen öffentlichen Steuerrechner und keine lokale Speicherung der Szenarien. Die bisherigen Einstiege `/rechner` und `/app/steuervergleich` leiten zum Dashboard weiter.
+
+## Steuerliches Berechnungsmodell
+
+Die Kaufnebenkosten werden entsprechend dem Gebäude-/Grundstücksanteil
+aufgeteilt. Bescheinigte Denkmalkosten sind ein Teil der gesamten Gebäudebasis;
+sie werden nicht noch einmal hinzuaddiert. § 7b und § 7i werden nicht kombiniert.
+Die geschätzte Steuerentlastung verwendet einen konstanten persönlichen
+Grenzsteuersatz und unterstellt die volle Nutzbarkeit der Abzüge. Sie ist keine
+Rendite- oder Cashflow-Prognose.
+
+Verifizierte Rechtsgrundlagen, zeitliche Grenzen, Rechenbeispiele und
+Modellgrenzen sind in [docs/TAX-MODEL.md](docs/TAX-MODEL.md) dokumentiert. Die
+Oberfläche verlinkt die zugehörigen Gesetze und BMF-Anwendungshinweise direkt.
 
 Im Onboarding kann zusätzlich eine Demo-Organisation im angemeldeten Mandanten erzeugt werden. Diese Daten unterliegen denselben RLS-Regeln wie reguläre Organisationsdaten und sind klar als Demo gekennzeichnet.
 

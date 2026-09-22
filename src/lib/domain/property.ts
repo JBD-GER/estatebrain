@@ -88,11 +88,17 @@ export interface AcquisitionAllocationInput {
 }
 
 export interface AcquisitionAllocationResult {
+  /** Land share of the purchase price, excluding allocated ancillary costs. */
   landValueCents: MoneyCents;
   buildingPurchasePriceCents: MoneyCents;
   realEstateTransferTaxCents: MoneyCents;
   acquisitionCostsCents: MoneyCents;
   totalAcquisitionCostCents: MoneyCents;
+  landAcquisitionCostsCents: MoneyCents;
+  buildingAcquisitionCostsCents: MoneyCents;
+  /** Non-depreciable land including its proportional ancillary costs. */
+  totalLandValueCents: MoneyCents;
+  /** Depreciable building purchase price plus its proportional ancillary costs. */
   buildingValueCents: MoneyCents;
 }
 
@@ -144,6 +150,7 @@ export function calculateAcquisitionAllocation(
       input.standardLandValueCentsPerSquareMeter *
       landOwnershipShare,
   );
+  assertMoneyCents(landValueCents, "landValueCents");
   const realEstateTransferTaxCents = roundHalfAwayFromZero(
     input.purchasePriceCents * input.realEstateTransferTaxRate,
   );
@@ -158,22 +165,35 @@ export function calculateAcquisitionAllocation(
     acquisitionCostsCents,
   ]);
 
-  if (landValueCents > totalAcquisitionCostCents) {
+  if (landValueCents > input.purchasePriceCents) {
     throw new DomainValidationError(
-      "Der berechnete Grundstücksanteil darf Kaufpreis und Kaufnebenkosten nicht übersteigen.",
+      "Der berechnete Grundstücksanteil darf den Kaufpreis nicht übersteigen.",
       "standardLandValueCentsPerSquareMeter",
     );
   }
+  if (input.purchasePriceCents === 0 && acquisitionCostsCents > 0) {
+    throw new DomainValidationError(
+      "Für die Aufteilung der Kaufnebenkosten muss ein Kaufpreis größer als null vorliegen.",
+      "purchasePriceCents",
+    );
+  }
+  // All general ancillary costs share the same allocation as the purchase.
+  // Round land costs once and assign the residual to the building so no cent
+  // disappears between the two components.
+  const landAcquisitionCostsCents = input.purchasePriceCents === 0 ? 0
+    : roundHalfAwayFromZero(acquisitionCostsCents * (landValueCents / input.purchasePriceCents));
+  const buildingAcquisitionCostsCents = acquisitionCostsCents - landAcquisitionCostsCents;
+  const totalLandValueCents = sumCents([landValueCents, landAcquisitionCostsCents]);
 
   return {
     landValueCents,
-    buildingPurchasePriceCents: Math.max(
-      0,
-      input.purchasePriceCents - landValueCents,
-    ),
+    buildingPurchasePriceCents: input.purchasePriceCents - landValueCents,
     realEstateTransferTaxCents,
     acquisitionCostsCents,
     totalAcquisitionCostCents,
-    buildingValueCents: totalAcquisitionCostCents - landValueCents,
+    landAcquisitionCostsCents,
+    buildingAcquisitionCostsCents,
+    totalLandValueCents,
+    buildingValueCents: totalAcquisitionCostCents - totalLandValueCents,
   };
 }

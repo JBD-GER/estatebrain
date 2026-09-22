@@ -20,10 +20,11 @@ test("angemeldeter Eigentümer erreicht Dashboard und Kernmodule", async ({
 
   await expect(page).toHaveURL(/\/app$/);
   await expect(
-    page.getByRole("heading", { level: 1, name: "Portfolio-Cockpit" }),
+    page.getByRole("heading", { level: 1, name: "Dein Steuer-Dashboard." }),
   ).toBeVisible();
 
   for (const path of [
+    "/app/uebersicht",
     "/app/mietverhaeltnisse",
     "/app/belege",
     "/app/kommunikation",

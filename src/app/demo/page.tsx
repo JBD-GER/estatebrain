@@ -10,11 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function DemoPage() {
-  const snapshot = getDemoDashboardSnapshot();
-
-  return (
-    <DemoShell>
-      <Dashboard snapshot={snapshot} />
-    </DemoShell>
-  );
+  return <DemoShell><Dashboard snapshot={getDemoDashboardSnapshot()} /></DemoShell>;
 }

@@ -981,14 +981,14 @@ export function OnboardingWizard({
                     <SummaryValue
                       label="Gebäudeanteil / AfA-Basis"
                       value={formatCents(acquisition?.buildingValueCents)}
-                      hint="Kaufpreis inkl. Nebenkosten minus Grundstück"
+                      hint="Gebäudekaufpreis + anteilige Gebäudenebenkosten"
                     />
                   </div>
                   {!acquisition ? (
                     <p className="mt-3 text-sm text-destructive">
                       Bitte prüfe Kaufpreis, Grundstücksfläche und
-                      Bodenrichtwert. Der Grundstücksanteil darf die gesamten
-                      Anschaffungskosten nicht übersteigen.
+                      Bodenrichtwert. Der Grundstücksanteil darf den
+                      Kaufpreis nicht übersteigen.
                     </p>
                   ) : null}
                 </div>

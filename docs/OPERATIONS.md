@@ -41,6 +41,8 @@ Provider- und Wartungsvariablen werden nur gesetzt, wenn die Integration aktiv i
 
 Secrets gehören weder in Git noch in Build-Logs. Werte werden in Vercel und Supabase direkt gepflegt und regelmäßig rotiert.
 
+Für den Steuervergleich sind keine zusätzlichen Secrets notwendig. Er ist ausschließlich im angemeldeten Dashboard unter `/app` verfügbar. Gespeicherte Vergleiche verwenden den vorhandenen Supabase-Client mit Benutzersitzung und RLS. Eine lokale `.env`-Datei ist für Vercel-Deployments nicht erforderlich; die drei Pflichtvariablen werden im jeweiligen Vercel-Environment hinterlegt. Für lokale Anmeldung werden dieselben öffentlichen Konfigurationswerte lokal benötigt, niemals der Secret Key. Die Portfolio-Übersicht bleibt unter `/app/uebersicht` erreichbar. Öffentliche Altlinks zu `/rechner` führen zum geschützten Dashboard.
+
 ## Supabase-Migrationen
 
 Remote-Projekt verbinden:
@@ -74,6 +76,20 @@ npx supabase db reset --local --no-seed
 ```
 
 Die Demo wird durch die Anwendung beziehungsweise eine autorisierte Datenbankfunktion erzeugt; es gibt keinen automatischen Produktions-Seed.
+
+### Steuervergleich
+
+Die Migration `20260922105513_investment_tax_scenarios.sql` ergänzt ausschließlich die Tabelle `investment_scenarios`. Sie speichert versionierte Eingaben, den ausgewählten Abschreibungsweg und den Namen eines Vergleichs je Organisation. Eigentümer, Administratoren und Buchhaltung dürfen diese Planungsdaten lesen und bearbeiten. Persönliche Steuerprofile behalten ihre bestehenden Berechtigungen. Anonyme Benutzer, Mieter, Mitarbeiter und Immobilienverwalter haben keinen Tabellenzugriff; Änderungen der Organisation und der Herkunftsdaten sind für API-Benutzer ausgeschlossen.
+
+Die Eingaben werden vor dem Speichern und nach dem Laden gegen das gemeinsame Schema und die fachliche Validierung geprüft. Geldbeträge liegen als ganze Centbeträge vor. Die Datenbank begrenzt JSON-Dokumente zusätzlich auf 16 KiB. In der Oberfläche werden die 100 zuletzt bearbeiteten Vergleiche geladen.
+
+Den Rollen- und Organisationsschutz mit ausschließlich zurückgerollten Testdaten prüfen:
+
+```bash
+npx supabase db query --linked --file supabase/tests/investment_scenarios_rls.sql
+```
+
+Der Test prüft Erstellen, Lesen, Ändern und Löschen durch berechtigte Rollen, die Trennung zweier Organisationen, verweigerte Rollen, gesperrte Eigentumsänderungen sowie die JSON-Größenbegrenzung.
 
 ## Supabase Auth
 

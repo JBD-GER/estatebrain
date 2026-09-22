@@ -27,6 +27,7 @@ test("öffentliche Demo zeigt ausschließlich den gekennzeichneten Demo-Modus", 
     page.getByRole("heading", { level: 1, name: "Portfolio-Cockpit" }),
   ).toBeVisible();
   await expect(page.getByText("Erfasster Portfoliowert")).toBeVisible();
+  await expect(page.getByTestId("investment-workspace")).toHaveCount(0);
   await expect(page.locator("main svg").first()).toBeVisible();
 });
 

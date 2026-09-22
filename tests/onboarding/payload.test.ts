@@ -92,13 +92,27 @@ describe("onboarding persistence payload", () => {
     );
   });
 
-  it("includes every purchase cost in the building allocation", () => {
+  it("allocates purchase costs to both land and building before calculating AfA", () => {
     const { acquisition } = prepareOnboardingPersistence(input).finalPayload
       .derived;
     expect(acquisition.realEstateTransferTaxCents).toBe(1_800_000);
     expect(acquisition.acquisitionCostsCents).toBe(3_600_000);
     expect(acquisition.landValueCents).toBe(2_500_000);
-    expect(acquisition.buildingValueCents).toBe(31_100_000);
+    expect(acquisition.landAcquisitionCostsCents).toBe(300_000);
+    expect(acquisition.buildingAcquisitionCostsCents).toBe(3_300_000);
+    expect(acquisition.totalLandValueCents).toBe(2_800_000);
+    expect(acquisition.buildingValueCents).toBe(30_800_000);
+    const prepared = prepareOnboardingPersistence(input);
+    expect(prepared.legacyPayload.property.buildingValue).toBe(308_000);
+    expect(prepared.finalPayload.derived.annualDepreciationCents).toBe(616_000);
+  });
+
+  it("preserves a manually entered tax-return AfA after correcting acquisition costs", () => {
+    const prepared = prepareOnboardingPersistence({
+      ...input,
+      property: { ...input.property, depreciationMode: "tax_return", existingAnnualDepreciation: 8_123.45 },
+    });
+    expect(prepared.finalPayload.derived.annualDepreciationCents).toBe(812_345);
   });
 
   it("never turns a scenario into a live legacy lease", () => {
