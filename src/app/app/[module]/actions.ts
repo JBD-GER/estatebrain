@@ -376,6 +376,23 @@ export async function createModuleRecordAction(
   if (isUpdate && !error && !result.data) return { status: "error", message: "Der Eintrag wurde inzwischen geändert oder gelöscht. Bitte neu laden." };
 
   if (error) {
+    if (slug === "einheiten") {
+      if (error.code === "23505") return {
+        status: "error",
+        message: "Diese Bezeichnung ist bei der Immobilie bereits vergeben. Bitte wähle eine andere Bezeichnung.",
+        errors: { unit_number: ["Eine Einheit mit dieser Bezeichnung existiert bereits, gegebenenfalls im Archiv."] },
+      };
+      if (error.code === "23514" && error.message.includes("Only apartment buildings")) return {
+        status: "error",
+        message: "Diese Immobilie hat bereits eine Einheit. Mehrere Einheiten sind derzeit nur für Mehrfamilienhäuser vorgesehen. Prüfe die Objektart unter Immobilien → Bearbeiten.",
+        errors: { property_id: ["Die hinterlegte Objektart erlaubt nur eine aktive Einheit."] },
+      };
+      if (error.code === "42501") return {
+        status: "error",
+        message: "Die Einheit konnte wegen einer Zugriffsprüfung nicht gespeichert werden. Bitte prüfe die gewählte Organisation und Immobilie. Besteht der Fehler mit Adminrechten weiter, kontaktiere den Support.",
+      };
+      return { status: "error", message: "Die Einheit konnte nicht gespeichert werden. Bitte prüfe die Angaben und versuche es erneut." };
+    }
     return {
       status: "error",
       message:

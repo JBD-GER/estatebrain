@@ -165,3 +165,9 @@ Bei reinem Anwendungscode kann auf das letzte bekannte gute Vercel-Deployment zu
 
 - Vertragsmiete und Renditekennzahlen addieren die separat gespeicherte Stellplatzmiete zur Kaltmiete. Der ursprüngliche Kaltmietbetrag wird nicht verändert, damit monatliche Forderungen die Stellplatzmiete nur einmal buchen.
 - Der verfügbare Cashflow zieht den Nebenkostenanteil von den bestätigten Mieteinnahmen ab. Die Aufteilung verwendet die historischen Komponenten der Monatsforderung, bei Teilzahlungen anteilig und insgesamt auf deren Nebenkostenbetrag begrenzt. Umlagefähige Ausgaben werden im verfügbaren Cashflow nicht erneut abgezogen; die vollständigen Einnahmen/Ausgaben bleiben in Buchhaltung und Steuergrundlage erhalten. Eingänge ohne zugeordnete Forderung erhalten keinen erfundenen Nebenkostenanteil. Explizit als Nebenkosten kategorisierte Einnahmen werden vollständig herausgerechnet.
+
+## Einheitenanlage und RLS (23.09.2026)
+
+- `INSERT ... RETURNING` prüft auch die SELECT-Policy. Der bisherige alleinige Aufruf von `private.can_view_unit` suchte die neue Einheit in einem STABLE-Snapshot, in dem sie noch nicht sichtbar war; dadurch scheiterte die Formularanlage mit SQLSTATE `42501`. `units_select_scoped` prüft den Immobilienzugriff nun zusätzlich direkt über `organization_id` und `property_id` der neuen Zeile. Die mietvertragsbasierte Sichtbarkeit bleibt über den bisherigen Helper bestehen; Schreibrechte werden nicht erweitert.
+- Der Regressionstest `npx supabase db query --linked --file supabase/tests/unit_creation_visibility.sql` prüft Anlage mit Rückgabe, Bearbeitung, Immobilienprojektion und Organisations-/Rollengrenzen innerhalb einer zurückgerollten Transaktion.
+- Doppelte Einheitenbezeichnungen und die bestehende Begrenzung auf eine aktive Einheit bei Nicht-MFH-Objekten erhalten konkrete Formularmeldungen. Die Objektart wird nicht automatisch geändert.
