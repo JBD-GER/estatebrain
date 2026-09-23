@@ -195,7 +195,7 @@ export async function getLiveDashboardSnapshot() {
         supabase
           .from("rent_claims")
           .select(
-            "id,lease_id,claim_month,due_date,amount_cents,paid_cents,status",
+            "id,lease_id,claim_month,due_date,amount_cents,ancillary_cents,paid_cents,status",
           )
           .eq("organization_id", viewer.organizationId)
           .neq("status", "cancelled")
@@ -240,7 +240,7 @@ export async function getLiveDashboardSnapshot() {
             supabase
               .from("expense_entries")
               .select(
-                "property_id,renovation_project_id,entry_date,amount_cents,bank_transaction_id,is_cash_effective,is_interest,is_principal,is_capitalizable,is_deductible,payment_status",
+                "property_id,renovation_project_id,entry_date,amount_cents,bank_transaction_id,is_cash_effective,is_interest,is_principal,is_capitalizable,is_deductible,is_recoverable,payment_status",
               )
               .eq("organization_id", viewer.organizationId)
               .gte("entry_date", historyStart)
@@ -450,6 +450,7 @@ export async function getLiveDashboardSnapshot() {
     id: text(row.id),
     leaseId: text(row.lease_id),
     claimMonth: text(row.claim_month),
+    ancillaryCents: cents(row.ancillary_cents, issues) ?? 0,
     dueDate: text(row.due_date),
     amountCents: cents(row.amount_cents, issues) ?? 0,
     paidCents: cents(row.paid_cents, issues) ?? 0,
@@ -505,6 +506,7 @@ export async function getLiveDashboardSnapshot() {
     isPrincipal: boolean(row.is_principal),
     isCapitalizable: boolean(row.is_capitalizable),
     isDeductible: boolean(row.is_deductible),
+    isRecoverable: boolean(row.is_recoverable),
   }));
   const loans: DashboardLoanSource[] = asRows(loansResult.data).map(
     (row) => ({

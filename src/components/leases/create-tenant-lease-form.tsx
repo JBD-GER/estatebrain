@@ -453,6 +453,7 @@ export function CreateTenantLeaseForm({
                 aria-describedby={describedBy("parkingRentCents", state)}
               />
               <FieldError field="parkingRentCents" state={state} />
+              <p className="text-xs text-muted-foreground">Wird zusätzlich zur Kaltmiete gerechnet. Bitte nicht bereits in der Kaltmiete eintragen.</p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="otherRentCents">

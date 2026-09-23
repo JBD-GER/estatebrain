@@ -87,6 +87,7 @@ export function getDemoDashboardSnapshot() {
       claimMonth: `${charge.period}-01`,
       dueDate: charge.dueDate,
       amountCents: charge.targetAmountCents,
+      ancillaryCents: DEMO_DATA.leases.find(lease => lease.id === charge.leaseId)?.serviceChargeCents ?? 0,
       paidCents: charge.paidAmountCents,
       status: charge.status,
     })),

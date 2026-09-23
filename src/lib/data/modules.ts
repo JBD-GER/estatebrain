@@ -48,6 +48,12 @@ function createModuleQueryPlan(
   let wantsTenantName = false;
 
   for (const column of definition.columns) {
+    if (column.key === "contract_rent_cents") {
+      derivedColumns.add(column.key);
+      selectColumns.add("cold_rent_cents");
+      selectColumns.add("parking_rent_cents");
+      continue;
+    }
     if (column.key === "tenant_name") {
       derivedColumns.add(column.key);
       wantsTenantName = true;
@@ -238,6 +244,9 @@ export async function getModulePageData(slug: string) {
     (row): ModuleRow => {
       const tenantId = primaryTenantByLease.get(asText(row.id));
       const derivedValues: ModuleRow = {};
+      if (plan.derivedColumns.has("contract_rent_cents")) {
+        derivedValues.contract_rent_cents = Number(row.cold_rent_cents ?? 0) + Number(row.parking_rent_cents ?? 0);
+      }
       if (plan.derivedColumns.has("property_name")) {
         derivedValues.property_name =
           propertyMap.get(asText(row.property_id)) ?? null;

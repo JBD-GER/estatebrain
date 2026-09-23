@@ -34,21 +34,21 @@ export default async function CashflowPage() {
       <PageHeader
         eyebrow="Liquidität"
         title="Cashflow"
-        description="Automatische Mietbuchungen, Belegausgaben und Finanzierung je Bestandsimmobilie. Sanierungskosten zählen einmalig im Abschlussmonat; zugeordnete Belege sind darin enthalten."
+        description="Kaltmiete inklusive Stellplatzmiete und weitere Einnahmen, abzüglich Nebenkosten, Eigentümerkosten und Finanzierung. Umlagefähige Nebenkostenbelege werden nicht doppelt abgezogen. Sanierungen zählen im Abschlussmonat."
       />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {
-            label: "Einnahmen (mtl.)",
+            label: "Einnahmen ohne Nebenkosten (mtl.)",
             value: money(
               metrics.operatingCashflowCents + metrics.monthlyCashExpensesCents,
             ),
-            detail: "Automatisch gebuchte und bestätigte Zahlungseingänge",
+            detail: `${money(metrics.monthlyAncillaryIncomeCents)} Nebenkosten bereits abgezogen`,
             icon: WalletCards,
           },
           {
-            label: "Ausgaben inkl. Sanierungen (mtl.)",
+            label: "Eigentümerkosten inkl. Sanierungen (mtl.)",
             value: money(metrics.monthlyCashExpensesCents),
             detail: `${money(metrics.currentYearExpensesCents)} im laufenden Jahr`,
             icon: ReceiptText,
@@ -125,13 +125,13 @@ export default async function CashflowPage() {
                 </p>
                 <dl className="mt-4 grid grid-cols-3 gap-2 border-t pt-3 text-xs">
                   <div>
-                    <dt className="text-muted-foreground">Einnahmen</dt>
+                    <dt className="text-muted-foreground">Einnahmen ohne NK</dt>
                     <dd className="mt-1 font-medium tabular-nums">
                       {money(property.monthlyIncomeCents)}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">Ausgaben</dt>
+                    <dt className="text-muted-foreground">Eigentümerkosten</dt>
                     <dd className="mt-1 font-medium tabular-nums">
                       {money(property.monthlyCashExpensesCents)}
                     </dd>

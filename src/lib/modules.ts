@@ -282,8 +282,8 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       { key: "tenant_name", label: "Hauptmieter" },
       { key: "starts_on", label: "Mietbeginn", format: "date" },
       {
-        key: "cold_rent_cents",
-        label: "Vertrags-Kaltmiete (mtl.)",
+        key: "contract_rent_cents",
+        label: "Kaltmiete inkl. Stellplatz (mtl.)",
         format: "money",
       },
       {
@@ -300,7 +300,7 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       { name: "starts_on", label: "Mietbeginn", type: "date", required: true },
       { name: "ends_on", label: "Mietende", type: "date" },
       { name: "due_day", label: "Zahlungstag im Monat (1–31)", type: "number", required: true },
-      { name: "cold_rent_cents", label: "Kaltmiete pro Monat", type: "money", required: true },
+      { name: "cold_rent_cents", label: "Kaltmiete pro Monat (ohne Stellplatz)", type: "money", required: true },
       { name: "ancillary_prepayment_cents", label: "Nebenkosten pro Monat", type: "money", required: true },
       { name: "parking_rent_cents", label: "Stellplatzmiete pro Monat", type: "money", required: true },
       { name: "other_rent_cents", label: "Weitere Miete pro Monat", type: "money", required: true },

@@ -50,7 +50,7 @@ begin
   r:=public.reserve_somantic_valuation(org,'ac000000-0000-4000-8000-000000000001','{"typ":"haus","street":"Teststraße 1","postcode":"10115","city":"Berlin","square_meters":100}');
   begin
     perform public.reserve_somantic_valuation(org,'ac000000-0000-4000-8000-000000000001','{"typ":"haus","street":"Teststraße 1","postcode":"10115","city":"Berlin","square_meters":100}');
-    raise exception 'Duplicate annual reservation must fail';
+    raise exception 'Concurrent pending reservation must fail';
   exception when unique_violation then null; end;
   begin
     perform public.finish_somantic_valuation(r,'{"estimates":{"price":500000}}');
@@ -71,5 +71,46 @@ do $$ begin
   assert (select count(*)=1 from public.valuations where property_id='ac000000-0000-4000-8000-000000000001'),'Duplicate projected value';
 end $$;
 reset role;
-select 'Lifecycle, rent correction, annual quota, access control and projection checks passed' as result;
+-- Completed valuations can be requested again in the SAME year without overwriting history.
+set local role authenticated;
+do $$
+declare r uuid; org uuid:='ab000000-0000-4000-8000-000000000001'; prop uuid:='ac000000-0000-4000-8000-000000000001';
+begin
+  r:=public.reserve_somantic_valuation(org,prop,'{"typ":"haus","street":"Teststraße 1","postcode":"10115","city":"Berlin","square_meters":105,"comparison_scope":"broader"}');
+  assert (select count(*)=2 and count(distinct valuation_year)=1 from public.somantic_valuation_reports where property_id=prop),'Same-year repeat must create a new report';
+  assert (select (input->>'square_meters')::int=100 and (response->'estimates'->>'price')::int=500000 from public.somantic_valuation_reports where property_id=prop and status='succeeded'),'Previous report changed';
+end $$;
+reset role;
+set local role service_role;
+select public.finish_somantic_valuation(id,'{"estimates":{"price":null,"rent":900},"confidence":{"price":"none","rent":"low","sample_size":6}}') from public.somantic_valuation_reports where property_id='ac000000-0000-4000-8000-000000000001' and status='pending';
+do $$ begin
+  assert (select current_market_value_cents=50000000 from public.properties where id='ac000000-0000-4000-8000-000000000001'),'Insufficient response must preserve market value';
+end $$;
+reset role;
+set local role authenticated;
+select public.reserve_somantic_valuation('ab000000-0000-4000-8000-000000000001','ac000000-0000-4000-8000-000000000001','{"typ":"haus","street":"Teststraße 1","postcode":"10115","city":"Berlin","square_meters":105}');
+reset role;
+set local role service_role;
+select public.finish_somantic_valuation(id,'{"estimates":{"price":550000,"rent":950},"confidence":{"price":"medium","rent":"low","sample_size":15}}') from public.somantic_valuation_reports where property_id='ac000000-0000-4000-8000-000000000001' and status='pending';
+do $$ begin
+  assert (select count(*)=3 and count(distinct valuation_year)=1 from public.somantic_valuation_reports where property_id='ac000000-0000-4000-8000-000000000001'),'Insufficient report must also allow an immediate repeat';
+  assert (select count(*)=2 and sum(market_value_cents)=105000000 from public.valuations where property_id='ac000000-0000-4000-8000-000000000001'),'Both successful values must remain in history';
+end $$;
+reset role;
+set local role authenticated;
+select public.reserve_somantic_valuation('ab000000-0000-4000-8000-000000000001','ac000000-0000-4000-8000-000000000002','{"typ":"haus","street":"Teststraße 2","postcode":"10115","city":"Berlin","square_meters":100}');
+reset role;
+set local role service_role;
+-- Even an unresolved request from a previous year blocks duplicate external requests.
+update public.somantic_valuation_reports set status='uncertain',valuation_year=valuation_year-1 where property_id='ac000000-0000-4000-8000-000000000002';
+reset role;
+set local role authenticated;
+do $$ begin
+  begin
+    perform public.reserve_somantic_valuation('ab000000-0000-4000-8000-000000000001','ac000000-0000-4000-8000-000000000002','{"typ":"haus","street":"Teststraße 2","postcode":"10115","city":"Berlin","square_meters":100}');
+    raise exception 'Uncertain prior-year request must prevent a duplicate';
+  exception when unique_violation then null; end;
+end $$;
+reset role;
+select 'Lifecycle, rent correction, repeat valuations, history preservation, duplicate prevention and access control passed' as result;
 rollback;

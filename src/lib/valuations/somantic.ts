@@ -23,6 +23,7 @@ const optionalNumber = <T extends z.ZodType<number>>(schema: T) => z.preprocess(
   value => value === "" || value == null ? undefined : value, schema.optional(),
 );
 export const valuationInputSchema = z.object({
+  comparison_scope: z.enum(["detailed", "broader"]).default("detailed"),
   typ: z.enum(["wohnung", "haus"], { error: "Bitte Wohnung oder Haus wählen." }),
   street: z.string().trim().min(3, "Straße und Hausnummer ergänzen.").max(200),
   postcode: z.string().regex(/^\d{5}$/, "Bitte eine fünfstellige deutsche PLZ eingeben."),
@@ -59,8 +60,30 @@ export const valuationResponseSchema = z.object({
   }),
 });
 export type ValuationResponse = z.infer<typeof valuationResponseSchema>;
-export function berlinYear(now = new Date()) {
-  return Number(new Intl.DateTimeFormat("en", { timeZone: "Europe/Berlin", year: "numeric" }).format(now));
+
+// Keep the actual property details in the report; only broaden the provider's filters.
+export function somanticRequestBody(input: ValuationInput) {
+  const { comparison_scope, property_type, features, ...core } = input;
+  return comparison_scope === "broader" ? core : { ...core, property_type, features };
+}
+
+export function valuationAvailability(response: ValuationResponse, side: "price" | "rent") {
+  if (response.estimates[side] != null) return null;
+  const count = response.estimates[side === "price" ? "price_per_square_meter" : "rent_per_square_meter"]?.count;
+  const label = side === "price" ? "Kauf" : "Miete";
+  return count == null
+    ? `Somantic liefert keinen ${side === "price" ? "Kaufpreis" : "Mietwert"}. Für diese Auswahl liegen keine ausreichenden Vergleichsdaten vor; der Anbieter weist keine Vergleichsanzahl aus.`
+    : count < 5
+      ? `${label}: ${count} passende Vergleichsobjekte. Somantic benötigt mindestens 5 für eine Schätzung. Es fehlen Vergleichsdaten beim Anbieter, keine Pflichtangaben zum Objekt.`
+      : `${label}: ${count} Vergleichsobjekte, aber Somantic liefert keinen Schätzwert. Bitte Objektdaten und Auswahl prüfen.`;
+}
+
+export function valuationFilterLabel(filter: string) {
+  const [key, value] = filter.split("=");
+  if (key === "recency" && /^\d+m$/.test(value ?? "")) return `Inserate der letzten ${value.slice(0, -1)} Monate`;
+  if (key === "property_type") return `Objektart: ${propertyTypes.find(([id]) => id === value)?.[1] ?? value}`;
+  if (key === "tenancy") return value === "rented" ? "Vermietete Kaufobjekte" : value === "vacant" ? "Bezugsfreie Kaufobjekte" : filter;
+  return featureLabels[key as keyof typeof featureLabels] ?? filter;
 }
 
 export function valuationDefaults(property: Record<string, unknown>, units: Array<{area_sqm: number | null; rooms: number | null; unit_type: string}> = []): Partial<ValuationInput> {

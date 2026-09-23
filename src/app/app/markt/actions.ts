@@ -18,7 +18,7 @@ export async function requestValuationAction(propertyId: string, input: unknown)
   if (!process.env.SOMANTIC_API_KEY || !process.env.SUPABASE_SECRET_KEY) return {error: "Die Bewertungsverbindung ist noch nicht eingerichtet."};
   const supabase = await createClient();
   const { data: id, error } = await supabase.rpc("reserve_somantic_valuation", {p_organization_id: viewer.organizationId, p_property_id: propertyId, p_input: parsed.data as Json});
-  if (error || !id) return {error: error?.code === "23505" ? "Für diese Immobilie wurde dieses Kalenderjahr bereits eine Bewertung angefordert. Bitte den vorhandenen Bericht öffnen." : error?.code === "55P03" ? "Bitte vor einem erneuten Versuch eine Minute warten." : "Die Bewertung konnte nicht reserviert werden. Bitte Verfügbarkeit und Objektdaten prüfen."};
+  if (error || !id) return {error: error?.code === "23505" ? "Für diese Immobilie läuft bereits eine Bewertungsanfrage oder ihr Ergebnis ist noch unbestätigt. Bitte den laufenden Abruf abwarten; bei unbestätigtem Status den Support kontaktieren." : error?.code === "55P03" ? "Bitte vor einem erneuten Versuch eine Minute warten." : "Die Bewertung konnte nicht reserviert werden. Bitte Verfügbarkeit und Objektdaten prüfen."};
   const admin = createAdminClient();
   try {
     const response = await requestSomanticValuation(parsed.data);

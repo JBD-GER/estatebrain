@@ -1,3 +1,4 @@
+import { allocateAncillaryPayments } from "@/lib/domain/rent-components";
 import { RecordActions } from "@/components/app/record-actions";
 import { expensesWithRenovationCompletion } from "@/lib/dashboard/renovation-cashflow";
 import Link from "next/link";
@@ -158,7 +159,7 @@ export default async function PropertyDetailPage({
       ? supabase
           .from("income_entries")
           .select(
-            "amount_cents, entry_date, payment_status, bank_transaction_id",
+            "amount_cents, entry_date, category, payment_status, bank_transaction_id",
           )
           .eq("organization_id", viewer.organizationId)
           .eq("property_id", id)
@@ -170,7 +171,7 @@ export default async function PropertyDetailPage({
       ? supabase
           .from("expense_entries")
           .select(
-            "id, renovation_project_id, amount_cents, description, entry_date, payment_status, document_status, is_cash_effective, is_interest, is_principal",
+            "id, renovation_project_id, amount_cents, description, entry_date, payment_status, document_status, is_cash_effective, is_interest, is_principal, is_recoverable",
           )
           .eq("organization_id", viewer.organizationId)
           .eq("property_id", id)
@@ -196,7 +197,7 @@ export default async function PropertyDetailPage({
         ? supabase
             .from("leases")
             .select(
-              "id, unit_id, cold_rent_cents, starts_on, ends_on, status",
+              "id, unit_id, cold_rent_cents, parking_rent_cents, starts_on, ends_on, status",
             )
             .eq("organization_id", viewer.organizationId)
             .in("unit_id", unitIds)
@@ -233,7 +234,7 @@ export default async function PropertyDetailPage({
     leaseIds.length
       ? supabase
           .from("rent_schedules")
-          .select("lease_id, cold_rent_cents, valid_from, valid_until")
+          .select("lease_id, cold_rent_cents, parking_rent_cents, valid_from, valid_until")
           .eq("organization_id", viewer.organizationId)
           .in("lease_id", leaseIds)
           .lte("valid_from", today)
@@ -242,7 +243,7 @@ export default async function PropertyDetailPage({
     canReadBookkeeping && propertyLeaseIds.length
       ? supabase
           .from("rent_claims")
-          .select("id")
+          .select("id,amount_cents,paid_cents,ancillary_cents")
           .eq("organization_id", viewer.organizationId)
           .in("lease_id", propertyLeaseIds)
       : Promise.resolve({ data: [] }),
@@ -255,7 +256,7 @@ export default async function PropertyDetailPage({
     canReadBookkeeping && propertyClaimIds.length
       ? await supabase
           .from("rent_payments")
-          .select("amount_cents, bank_transaction_id, paid_on")
+          .select("rent_claim_id, amount_cents, bank_transaction_id, paid_on")
           .eq("organization_id", viewer.organizationId)
           .in("rent_claim_id", propertyClaimIds)
           .eq("allocation_status", "confirmed")
@@ -265,7 +266,7 @@ export default async function PropertyDetailPage({
 
   const currentScheduleByLease = new Map<
     string,
-    { cold_rent_cents: number }
+    { cold_rent_cents: number; parking_rent_cents: number }
   >();
   for (const schedule of rentSchedules) {
     if (
@@ -282,7 +283,7 @@ export default async function PropertyDetailPage({
       currentScheduleByLease.get(lease.id)?.cold_rent_cents ??
         lease.cold_rent_cents ??
         0,
-    );
+    ) + Number(currentScheduleByLease.get(lease.id)?.parking_rent_cents ?? lease.parking_rent_cents ?? 0);
     contractColdRentByUnit.set(
       lease.unit_id,
       (contractColdRentByUnit.get(lease.unit_id) ?? 0) + currentColdRent,
@@ -328,16 +329,20 @@ export default async function PropertyDetailPage({
     )
     .reduce((sum, row) => sum + Number(row.amount_cents ?? 0), 0);
   const paidIncomeCents = paidRentCents + otherPaidIncomeCents;
+  const allocatedPayments = rentPaymentRows.map(row => ({ rentClaimId: row.rent_claim_id, amountCents: Number(row.amount_cents), paidOn: row.paid_on }));
+  const ancillaryByPayment = allocateAncillaryPayments((rentClaimResult.data ?? []).map(claim => ({ id: claim.id, amountCents: Number(claim.amount_cents), paidCents: Number(claim.paid_cents), ancillaryCents: Number(claim.ancillary_cents) })), allocatedPayments);
+  const ancillaryIncomeCents = [...ancillaryByPayment.values()].reduce((sum, amount) => sum + amount, 0)
+    + (income ?? []).filter(row => row.payment_status === "paid" && ["service_charge", "ancillary"].includes(row.category) && (!row.bank_transaction_id || !rentPaymentBankIds.has(row.bank_transaction_id))).reduce((sum, row) => sum + Number(row.amount_cents), 0);
   const paidCashExpenses = expenseRows.filter(
     (row) => row.payment_status === "paid" && row.is_cash_effective,
   );
-  const cashExpenses = expensesWithRenovationCompletion(paidCashExpenses.map(e=>({propertyId:property.id,renovationProjectId:e.renovation_project_id,entryDate:e.entry_date,amountCents:e.amount_cents,bankTransactionId:null,cashEffective:true,isInterest:e.is_interest,isPrincipal:e.is_principal,isCapitalizable:false,isDeductible:false})), (renovations ?? []).map(r=>({id:r.id,propertyId:r.property_id,name:r.name,status:r.status,priority:r.priority,estimatedCostCents:r.estimated_cost_cents,actualCostCents:r.actual_cost_cents,actualEndDate:r.actual_end_date,plannedStartDate:r.planned_start_date}))).filter(e=>e.entryDate>=yearStart && e.entryDate<=today);
+  const cashExpenses = expensesWithRenovationCompletion(paidCashExpenses.map(e=>({propertyId:property.id,renovationProjectId:e.renovation_project_id,entryDate:e.entry_date,amountCents:e.amount_cents,bankTransactionId:null,cashEffective:true,isInterest:e.is_interest,isPrincipal:e.is_principal,isRecoverable:e.is_recoverable,isCapitalizable:false,isDeductible:false})), (renovations ?? []).map(r=>({id:r.id,propertyId:r.property_id,name:r.name,status:r.status,priority:r.priority,estimatedCostCents:r.estimated_cost_cents,actualCostCents:r.actual_cost_cents,actualEndDate:r.actual_end_date,plannedStartDate:r.planned_start_date}))).filter(e=>e.entryDate>=yearStart && e.entryDate<=today);
   const totalExpenseCents = cashExpenses.reduce(
     (sum, row) => sum + row.amountCents,
     0,
   );
   const operatingExpenseCents = cashExpenses
-    .filter((row) => !row.isInterest && !row.isPrincipal)
+    .filter((row) => !row.isInterest && !row.isPrincipal && !row.isRecoverable)
     .reduce((sum, row) => sum + row.amountCents, 0);
 
   const confirmedLoanPayments = (loanPaymentResult.data ?? []).filter((row) => {
@@ -385,7 +390,7 @@ export default async function PropertyDetailPage({
           ? "forecast"
           : "none";
   const cashflowAfterFinancingCents =
-    paidIncomeCents - operatingExpenseCents - financingCashflowCents;
+    paidIncomeCents - ancillaryIncomeCents - operatingExpenseCents - financingCashflowCents;
 
   const documentById = new Map(
     (documents ?? []).map((document) => [document.id, document]),
@@ -474,7 +479,7 @@ export default async function PropertyDetailPage({
               : cents(property.current_market_value_cents),
           ],
           [
-            "Vertrags-Kaltmiete (mtl.)",
+            "Kaltmiete inkl. Stellplatz (mtl.)",
             activeLeases.length
               ? cents(monthlyContractColdRentCents)
               : "Kein aktiver Vertrag",
@@ -588,8 +593,12 @@ export default async function PropertyDetailPage({
                   </span>
                 </div>
                 <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Abzüglich Nebenkostenanteil</span>
+                  <span className="font-medium">− {cents(ancillaryIncomeCents)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
                   <span className="text-muted-foreground">
-                    Operative, bezahlte Ausgaben
+                    Eigentümerkosten ohne umlagefähige Nebenkosten
                   </span>
                   <span className="font-medium">
                     − {cents(operatingExpenseCents)}
@@ -628,7 +637,9 @@ export default async function PropertyDetailPage({
                 </div>
                 <p className="text-xs leading-5 text-muted-foreground">
                   Bestätigte Mietzahlungen und andere bezahlte Einnahmen werden
-                  gemeinsam berücksichtigt. Als Zins oder
+                  gemeinsam berücksichtigt. Der Nebenkostenanteil wird abgezogen;
+                  als umlagefähig erfasste Ausgaben werden nicht nochmals abgezogen.
+                  Stellplatzmiete bleibt enthalten. Als Zins oder
                   Tilgung markierte Ausgaben werden im operativen Betrag nicht
                   erneut abgezogen. Für Darlehen ohne bestätigte Zahlung wird
                   die hinterlegte Monatsrate bis zum aktuellen Monat als klar
@@ -652,7 +663,7 @@ export default async function PropertyDetailPage({
                   <TableRow>
                     <TableHead>Einheit</TableHead>
                     <TableHead>Fläche</TableHead>
-                    <TableHead>Vertrags-Kaltmiete (mtl.)</TableHead>
+                    <TableHead>Kaltmiete inkl. Stellplatz (mtl.)</TableHead>
                     <TableHead>Markt-/SOLL-Kaltmiete (mtl.)</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>

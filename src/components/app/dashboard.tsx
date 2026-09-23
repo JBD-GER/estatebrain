@@ -342,7 +342,7 @@ function PropertyTable({ snapshot }: { snapshot: DashboardSnapshot }) {
           <TableHeader>
             <TableRow>
               <TableHead>Immobilie</TableHead>
-              <TableHead className="text-right">IST-Vertragsmiete (mtl.)</TableHead>
+              <TableHead className="text-right">Kaltmiete inkl. Stellplatz (mtl.)</TableHead>
               <TableHead className="text-right">SOLL-Marktmiete (mtl.)</TableHead>
               <TableHead className="text-right">Zahlungseingang (mtl.)</TableHead>
               <TableHead className="text-right">Ausgaben lfd. Jahr</TableHead>
@@ -413,7 +413,7 @@ function PropertyCashflowCards({ snapshot }: { snapshot: DashboardSnapshot }) {
             Cashflow je Immobilie
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Zahlungseingänge minus zugeordnete Belegausgaben und Schuldendienst.
+            Zahlungseingänge ohne Nebenkosten minus Eigentümerkosten und Schuldendienst.
           </p>
         </div>
         <Button asChild size="sm" variant="ghost">
@@ -458,7 +458,7 @@ function PropertyCashflowCards({ snapshot }: { snapshot: DashboardSnapshot }) {
               </p>
               <dl className="mt-4 grid grid-cols-3 gap-2 border-t pt-3 text-xs">
                 <div>
-                  <dt className="text-muted-foreground">Einnahmen</dt>
+                  <dt className="text-muted-foreground">Einnahmen ohne NK</dt>
                   <dd className="mt-1 font-medium tabular-nums">
                     {euros(property.monthlyIncomeCents)}
                   </dd>
@@ -553,9 +553,9 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <KpiCard
-                description="Aktive Kaltmiete aus realen Mietverhältnissen, ohne Nebenkosten."
+                description="Kaltmiete plus Stellplatzmiete aus aktiven Mietverhältnissen, ohne Nebenkosten."
                 icon={CircleDollarSign}
-                title="IST / Vertrags-Kaltmiete (mtl.)"
+                title="Kaltmiete inkl. Stellplatz (mtl.)"
                 tone="positive"
                 value={euros(metrics.monthlyContractColdRentCents)}
                 href="/app/mietverhaeltnisse"
@@ -576,7 +576,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                 href="/app/mietverhaeltnisse"
               />
               <KpiCard
-                description="Einnahmen minus liquiditätswirksame Betriebsausgaben."
+                description="Einnahmen ohne Nebenkosten minus Eigentümerkosten."
                 icon={TrendingUp}
                 title="Operativer Cashflow"
                 tone={

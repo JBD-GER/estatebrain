@@ -47,12 +47,38 @@ describe("dashboard snapshot", () => {
     expect(snapshot.metrics.monthlyActualRentCents).toBe(379_000);
     expect(snapshot.metrics.openRentCents).toBe(127_000);
     expect(snapshot.metrics.monthlyExpensesCents).toBe(851_900);
-    expect(snapshot.metrics.operatingCashflowCents).toBe(-155_400);
-    expect(snapshot.metrics.financingCashflowCents).toBe(-472_900);
-    expect(snapshot.metrics.estimatedAfterTaxCents).toBe(-485_880);
+    expect(snapshot.metrics.monthlyAncillaryIncomeCents).toBe(69_084);
+    expect(snapshot.metrics.operatingCashflowCents).toBe(-224_484);
+    expect(snapshot.metrics.financingCashflowCents).toBe(-541_984);
+    expect(snapshot.metrics.estimatedAfterTaxCents).toBe(-554_964);
     expect(snapshot.metrics.portfolioValueCents).toBe(135_800_000);
     expect(snapshot.metrics.loanBalanceCents).toBe(66_180_000);
     expect(snapshot.metrics.equityCents).toBe(69_620_000);
+  });
+
+  it("adds parking to contract rent and excludes ancillary pass-throughs exactly once", () => {
+    const snapshot = buildDashboardSnapshot(liveSource({
+      properties: [{id:"p",name:"Haus",purchasePriceCents:10000000,acquisitionCostsCents:0,buildingValueCents:null,currentMarketValueCents:null,purchaseDate:null}],
+      units: [{id:"u",propertyId:"p",label:"1",areaSquareMeters:65,targetColdRentCents:100000,status:"rented"}],
+      leases: [{id:"l",unitId:"u",startsOn:"2026-01-01",endsOn:null,coldRentCents:100000,parkingCents:10000,ancillaryCents:30000,otherCents:0,status:"active"}],
+      // Historic claim, not today's changed ancillary amount, determines the deduction.
+      rentClaims: [{id:"c",leaseId:"l",claimMonth:"2026-07-01",dueDate:"2026-07-01",amountCents:130000,ancillaryCents:20000,paidCents:130000,status:"paid"}],
+      rentPayments: [{rentClaimId:"c",paidOn:"2026-07-01",amountCents:130000,bankTransactionId:"bank-rent"}],
+      income: [{propertyId:"p",entryDate:"2026-07-01",amountCents:130000,category:"rent",bankTransactionId:"bank-rent"}],
+      expenses: [
+        {propertyId:"p",entryDate:"2026-07-02",amountCents:20000,bankTransactionId:null,cashEffective:true,isInterest:false,isPrincipal:false,isCapitalizable:false,isDeductible:true,isRecoverable:true},
+        {propertyId:"p",entryDate:"2026-07-02",amountCents:10000,bankTransactionId:null,cashEffective:true,isInterest:false,isPrincipal:false,isCapitalizable:false,isDeductible:true,isRecoverable:false},
+      ],
+      loans: [{id:"loan",propertyId:"p",currentBalanceCents:1000000,monthlyPaymentCents:20000,fixedRateUntil:null,status:"active"}],
+    }));
+    expect(snapshot.metrics.monthlyContractColdRentCents).toBe(110000);
+    expect(snapshot.metrics.monthlyActualRentCents).toBe(130000);
+    expect(snapshot.metrics.monthlyAncillaryIncomeCents).toBe(20000);
+    expect(snapshot.metrics.monthlyCashExpensesCents).toBe(10000);
+    expect(snapshot.metrics.financingCashflowCents).toBe(80000);
+    expect(snapshot.properties[0]).toMatchObject({monthlyContractColdRentCents:110000,monthlyIncomeCents:110000,monthlyAncillaryIncomeCents:20000,monthlyCashflowAfterFinancingCents:80000});
+    expect(snapshot.months.at(-1)?.financingCashflowCents).toBe(80000);
+    expect(snapshot.metrics.grossRentalYield).toBeCloseTo(0.132);
   });
 
   it("never invents historic actual payments for the demo chart", () => {

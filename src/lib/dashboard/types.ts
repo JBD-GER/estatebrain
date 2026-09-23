@@ -7,6 +7,7 @@ export type DashboardMonthPoint = {
   targetRentCents: number | null;
   actualRentCents: number;
   incomeCents: number;
+  ancillaryIncomeCents: number;
   operatingExpensesCents: number;
   operatingCashflowCents: number;
   debtServiceCents: number;
@@ -25,6 +26,7 @@ export type DashboardPropertyPoint = {
   monthlyTargetColdRentCents: number;
   monthlyRentPaymentsCents: number;
   monthlyIncomeCents: number;
+  monthlyAncillaryIncomeCents: number;
   monthlyCashExpensesCents: number;
   monthlyDebtServiceCents: number;
   debtServiceMode: "actual" | "forecast" | "mixed" | "none";
@@ -55,6 +57,7 @@ export type DashboardMetrics = {
   monthlyMarketColdRentCents: number;
   monthlyTargetRentCents: number;
   monthlyActualRentCents: number;
+  monthlyAncillaryIncomeCents: number;
   openRentCents: number;
   monthlyCashExpensesCents: number;
   monthlyDebtServiceCents: number;
