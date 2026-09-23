@@ -1,3 +1,4 @@
+import { expensesWithRenovationCompletion } from "./renovation-cashflow";
 import {
   calculateCashflowAfterFinancingCents,
   calculateEstimatedEquityCents,
@@ -76,6 +77,7 @@ export type DashboardIncomeSource = {
 };
 
 export type DashboardExpenseSource = {
+  renovationProjectId?: string | null;
   propertyId: string | null;
   entryDate: string;
   amountCents: number;
@@ -118,6 +120,8 @@ export type DashboardTaskSource = {
 };
 
 export type DashboardRenovationSource = {
+  actualCostCents?: number;
+  actualEndDate?: string | null;
   id: string;
   propertyId: string;
   name: string;
@@ -208,7 +212,7 @@ function formatPeriodLabel(anchorDate: string) {
 }
 
 function isLeaseInMonth(lease: DashboardLeaseSource, month: string) {
-  if (["draft", "ended", "cancelled"].includes(lease.status)) return false;
+  if (["draft", "cancelled"].includes(lease.status)) return false;
   return (
     lease.startsOn <= monthEnd(month) &&
     (lease.endsOn === null || lease.endsOn >= monthStart(month))
@@ -809,7 +813,8 @@ function buildActions(
 export function buildDashboardSnapshot(
   inputSource: DashboardSource,
 ): DashboardSnapshot {
-  const source = scopeToDashboardProperties(inputSource);
+  const scoped = scopeToDashboardProperties(inputSource);
+  const source = {...scoped, expenses: expensesWithRenovationCompletion(scoped.expenses,scoped.renovations)};
   const loansAvailable = source.loansAvailable !== false;
   const currentMonth = monthKey(source.asOfDate);
   const months = previousMonths(source.asOfDate, 12).map((month) => {

@@ -1,16 +1,16 @@
 # Immobilien-Steuervergleich
 
-Fachlicher Prüfstand: **22. September 2026**. Implementierung: `src/lib/domain/investment-tax.ts`. Referenz- und Grenzfalltests: `tests/domain/investment-tax.test.ts`.
+Fachlicher Prüfstand: **23. September 2026**. Implementierung: `src/lib/domain/investment-tax.ts`. Referenz- und Grenzfalltests: `tests/domain/investment-tax.test.ts`.
 
 ## Zweck und Grenzen
 
-Der Rechner vergleicht Abschreibungsalternativen für ein vollständig wohnwirtschaftlich genutztes Erwerbsobjekt. Er berechnet **Abzugsbeträge und deren vereinfachte Einkommensteuerwirkung**, keine Rendite, keinen Cashflow und keine zugesagte Erstattung. Einkommensteuerprogression, Soli, Kirchensteuer, Verlustverrechnungsbeschränkungen, diskontierte Gegenwartswerte und Änderungen der Steuersätze sind nicht enthalten. In jedem Kalenderjahr gilt der eingegebene Grenzsteuersatz. Es werden ausreichend steuerpflichtige Einkünfte und gegebenenfalls sofortiger Verlustausgleich angenommen.
+Der Rechner vergleicht Abschreibungsalternativen für ein vollständig wohnwirtschaftlich genutztes Erwerbsobjekt. Er berechnet **Abzugsbeträge und deren vereinfachte Einkommensteuerwirkung**, ergänzend einen laufenden Cashflow auf Basis eingegebener Miet- und Finanzierungsannahmen. Keine Rendite- oder Erstattungszusage. Einkommensteuerprogression, Soli, Kirchensteuer, Verlustverrechnungsbeschränkungen, diskontierte Gegenwartswerte und Änderungen der Steuersätze sind nicht enthalten. In jedem Kalenderjahr gilt der eingegebene Grenzsteuersatz. Es werden ausreichend steuerpflichtige Einkünfte und gegebenenfalls sofortiger Verlustausgleich angenommen.
 
 Für die Eigennutzung gilt keine normale Gebäude-AfA; ein bestätigtes Baudenkmal kann gesondert nach § 10f modelliert werden. Gewerbe, gemischte Nutzung, verbilligte Vermietung, wechselnde Nutzung, Erbschaft/Schenkung, historische Fördermodelle, individuelle Restnutzungsdauergutachten, spätere Zuschussänderungen und eigene Herstellungsfälle benötigen eine individuelle Berechnung. Zukunftsjahre schreiben den geprüften Rechtsstand fort und prognostizieren keine Gesetzesänderung.
 
 ## Eingaben und Schnittstelle
 
-Der Vergleich ist ausschließlich im angemeldeten Steuer-Dashboard unter `/app`
+Der Vergleich ist ausschließlich unter Steuerübersicht → Szenarien & Abschreibung (`/app/steuern/szenarien`)
 für Rollen mit Steuerzugriff verfügbar. Vorhandene Immobilien können als
 editierbare Vergleichsszenarien übernommen werden. Dabei werden Kaufpreis,
 Kaufnebenkosten, Grundstücksanteil und tatsächliches Anschaffungsdatum verwendet.
@@ -47,7 +47,7 @@ Grund und Boden samt zugehörigen Nebenkosten sind nicht abschreibbar. Der einge
 
 Die lineare AfA hängt vom ursprünglichen Fertigstellungsdatum ab: vor 1925 jährlich 2,5 %, von 1925 bis einschließlich 2022 jährlich 2 %, ab 2023 jährlich 3 %. Die Bezeichnung „Bestand“ oder „Denkmal“ ändert diesen Satz nicht. Abschreibungsbeginn ist frühestens die spätere von Anschaffung und Fertigstellung. Im ersten Kalenderjahr zählen die Monate ab einschließlich dieses Monats. Auch die degressive AfA wird im ersten Jahr monatsanteilig gekürzt. [§ 7 Abs. 1, 4 und 5a EStG](https://www.gesetze-im-internet.de/estg/__7.html).
 
-5 % degressive AfA erscheinen nur für bestätigte, zur Vermietung vorgesehene EU-/EWR-Neubau-Erwerbsfälle: rechtswirksamer Kaufvertrag vom 01.10.2023 bis 30.09.2029, Erwerb des fertigen Neubaus spätestens am Ende seines Fertigstellungsjahres. Ein Hersteller mit maßgeblicher Baubeginnsanzeige wird in dieser Erwerbsoberfläche nicht abgebildet. Die Jahresabschreibung folgt dem verbleibenden Wert. Ein optionaler Wechsel zur linearen Restwert-AfA erfolgt, sobald deren Jahresbetrag größer ist; der Wechsel ist dauerhaft. [§ 7 Abs. 5a EStG](https://www.gesetze-im-internet.de/estg/__7.html).
+5 % degressive AfA erscheinen nur für bestätigte, zur Vermietung vorgesehene EU-/EWR-Neubau-Erwerbsfälle: rechtswirksamer Kaufvertrag vom 01.10.2023 bis 30.09.2029, Erwerb des fertigen Neubaus spätestens am Ende seines Fertigstellungsjahres. Ein Hersteller mit maßgeblicher Baubeginnsanzeige wird in dieser Erwerbsoberfläche nicht abgebildet. Die Jahresabschreibung folgt dem verbleibenden Wert. Der Nutzer kann den dauerhaften Wechsel zur linearen Restwert-AfA nach sechs Steuerjahren wählen (einschließlich eines anteiligen ersten Jahres), den günstigeren jährlichen Abzug automatisch abwarten oder durchgehend degressiv rechnen. Bei Auswahl eines neuen Neubaus ist der Wechsel nach sechs Steuerjahren voreingestellt. Sechs Jahre sind keine gesetzliche Pflicht. Nach dem Wechsel gilt Restwert geteilt durch Restnutzungsdauer, nicht 3 % der ursprünglichen Basis. [§ 7 Abs. 5a EStG](https://www.gesetze-im-internet.de/estg/__7.html).
 
 Für die Restwertverteilung verwendet das Modell 33, 40 oder 50 Jahre ab ursprünglichem AfA-Beginn, vermindert um die bereits verstrichene Zeit einschließlich der Erstjahresmonate. 33 Jahre folgen der Verwaltungskonvention der Restwert-AfA; die reine lineare 3-%-AfA läuft unabhängig davon bis zum vollständigen Verbrauch der Basis. Der Modellwechsel ist keine Feststellung einer individuellen tatsächlichen Nutzungsdauer. [R 7a Abs. 9 EStR](https://esth.bundesfinanzministerium.de/esth/2025/A-Einkommensteuergesetz/II-Einkommen-2-24b/3-Gewinn-4-7i/Paragraf-7a/inhalt.html).
 
@@ -87,3 +87,14 @@ Die normale Immobilienerfassung und das Onboarding teilen allgemeine Kaufnebenko
 Die additive Migration `20260922110423_allocate_property_ancillary_costs.sql` korrigiert die serverseitige Onboarding-Berechnung und den Trigger für künftig automatisch erzeugte AfA-Datensätze. Der `land_share_cents` eines AfA-Datensatzes enthält dort ebenfalls die Grundstücksnebenkosten. Es findet keine pauschale Änderung vorhandener Immobilien, AfA-Anlagen oder manuell aus Steuererklärungen übernommener Abschreibungswerte statt. Ältere automatisch erzeugte Bemessungsgrundlagen sind deshalb fachlich abzugleichen.
 
 Die Migration wurde am 22.09.2026 auf dem verbundenen Projekt angewandt. Referenzabfragen lieferten für 500.000 € Kaufpreis, 57.850 € Nebenkosten und 160.000 € Grundstücksanteil eine Gebäudebasis von 379.338 €. Ein transaktionaler Integrationstest erzeugte eine Immobilie samt automatischem AfA-Datensatz, prüfte die Kostenaufteilung und wurde vollständig zurückgerollt. Die bestehenden Zugriffsbeschränkungen des internen Onboarding-Finalizers und des neuen Rechenhelfers wurden anschließend geprüft.
+
+
+## Miete, Finanzierung und laufender Cashflow
+
+`src/lib/domain/investment-cashflow.ts` berechnet monatlich und fasst die Ergebnisse nach Kalenderjahr zusammen. Das optionale `cashflow`-Objekt in den gespeicherten Szenarien enthält Kaltmiete, Mietbeginn, jährliche Mietsteigerung, Ausfallquote, laufende Eigentümerkosten sowie Darlehensbetrag, Sollzins, anfängliche Tilgung und Darlehensbeginn. Bestehende Szenarien bleiben ohne diese Angaben gültig; fehlende Beträge entsprechen ausdrücklich 0 €.
+
+Die Miete beginnt frühestens ab Erwerb und Fertigstellung; der Startmonat zählt vollständig. Steigerungen greifen nach jeweils zwölf Monaten ab Mietbeginn. Ein Annuitätendarlehen hält die anfängliche Monatsrate konstant, berechnet Zinsen aus der jeweils verbleibenden Schuld und stoppt die Tilgung bei null. Konstanter Sollzins, keine Anschlussfinanzierung und keine Sondertilgungen sind ausdrückliche Prognoseannahmen.
+
+Bei Vermietung gilt: steuerliches Ergebnis = Kaltmiete nach Ausfall − sofort abziehbare laufende Eigentümerkosten − Zinsen − AfA. Die Tilgung ist kein Werbungskostenabzug. Steuer = Ergebnis × Grenzsteuersatz; ein negatives Ergebnis unterstellt sofort nutzbaren Verlustausgleich. Laufender Cashflow = Miete − Kosten − Zinsen − Tilgung − Steuer. Bei Eigennutzung gibt es keine Miet- oder Zinsabzüge, aber gegebenenfalls den getrennten §-10f-Effekt. [§ 9 EStG](https://www.gesetze-im-internet.de/estg/__9.html).
+
+Nebenkosten werden als durchlaufend angenommen. Rücklagen und aktivierungspflichtige Sanierungen gehören nicht in die monatlichen Eigentümerkosten. Erwerbszahlungen, Eigenkapital, Darlehensauszahlung und Verkauf werden nicht als laufender Cashflow dargestellt. Szenarien verändern weder Mietverträge noch bestehende Finanzierungen. Die AfA-Grafik bleibt ein Vergleich der isolierten Abschreibungswirkung; die zusätzliche Cashflow-Tabelle und der CSV-Export enthalten die Miet- und Finanzierungswerte.

@@ -1,5 +1,5 @@
-import { CalendarPlus, CheckCircle2, CircleAlert } from "lucide-react";
-import { generateCurrentMonthRentClaimsAction } from "@/app/app/mietverhaeltnisse/actions";
+import { CheckCircle2, CircleAlert } from "lucide-react";
+import { PaymentCorrection } from "@/components/leases/payment-correction";
 import { ModuleWorkspace } from "@/components/app/module-workspace";
 import {
   CreateTenantLeaseForm,
@@ -10,7 +10,6 @@ import {
   type OpenRentClaimOption,
 } from "@/components/leases/record-rent-payment-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { hasPermission } from "@/lib/auth/permissions";
 import { getModulePageData } from "@/lib/data/modules";
 import { createClient } from "@/lib/supabase/server";
@@ -58,6 +57,7 @@ export default async function RentPage({
   const data = await getModulePageData("mietverhaeltnisse");
   if (!data) return null;
 
+  const tenants = await getModulePageData("mieter");
   const params = await searchParams;
   const result = typeof params.result === "string" ? params.result : null;
   const rawCount = typeof params.count === "string" ? params.count : "0";
@@ -74,6 +74,8 @@ export default async function RentPage({
   );
 
   const supabase = await createClient();
+  const sync = canGenerate ? await supabase.rpc("sync_automatic_rent", {p_organization_id:data.viewer.organizationId}) : null;
+  const payments = canRecordPayment ? await supabase.from("rent_payments").select("id,paid_on,amount_cents,is_automatic,bank_transaction_id,rent_claims!rent_payments_rent_claim_id_fkey!inner(lease_id,claim_month)").eq("organization_id",data.viewer.organizationId).eq("allocation_status","confirmed").order("paid_on",{ascending:false}).limit(120) : null;
   const [creationResults, claimsResult] = await Promise.all([
     canCreate
       ? Promise.all([
@@ -254,6 +256,7 @@ export default async function RentPage({
     .join(":");
 
   return (
+    <div className="space-y-6"><p className="rounded-lg bg-muted p-4 text-sm">Mieten werden zum vereinbarten Fälligkeitstag automatisch als eingegangen gebucht. Das ist keine Bankbestätigung. Zahlungsdatum und Betrag kannst du unten korrigieren.</p>{sync?.error && <p role="alert" className="text-destructive">Automatische Mietbuchungen konnten gerade nicht aktualisiert werden.</p>}
     <ModuleWorkspace
       definition={data.definition}
       rows={data.rows}
@@ -279,17 +282,13 @@ export default async function RentPage({
                 defaultPaidOn={currentBerlinDate()}
               />
             ) : null}
-            {canGenerate ? (
-              <form action={generateCurrentMonthRentClaimsAction}>
-                <Button type="submit" variant="outline">
-                  <CalendarPlus />
-                  Sollstellungen {currentMonthLabel()}
-                </Button>
-              </form>
-            ) : null}
+
           </>
         ) : undefined
       }
     />
+    {canRecordPayment && <section className="space-y-3"><h2 className="text-xl font-semibold">Zahlungseingänge</h2>{payments?.error ? <p role="alert">Zahlungen konnten nicht geladen werden.</p> : <><p className="text-sm text-muted-foreground">Die letzten 120 Buchungen. Eine Korrektur bleibt auch nach dem nächsten automatischen Lauf erhalten.</p><div className="divide-y rounded-xl border">{payments?.data?.map(payment=>{const claim=payment.rent_claims;const lease=data.rows.find(row=>row.id===claim.lease_id);return <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 p-4"><div><p className="font-medium">{String(lease?.tenant_name ?? lease?.unit_name ?? "Mietverhältnis")} · {monthLabel(claim.claim_month)}</p><p className="text-sm text-muted-foreground">{payment.paid_on} · {euro.format(payment.amount_cents/100)} · {payment.is_automatic ? "Automatisch gebucht" : "Manuell bestätigt"}</p></div>{!payment.bank_transaction_id && <PaymentCorrection payment={payment}/>}</div>})}{!payments?.data?.length && <p className="p-4 text-muted-foreground">Noch keine Zahlungseingänge.</p>}</div></>}</section>}
+    {tenants && <ModuleWorkspace headingLevel={2} {...tenants}/>}
+    </div>
   );
 }

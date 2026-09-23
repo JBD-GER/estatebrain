@@ -3,16 +3,26 @@ import { expect, test } from "@playwright/test";
 const qaEmail = process.env.E2E_USER_EMAIL;
 const qaPassword = process.env.E2E_USER_PASSWORD;
 
-test.describe("Steuervergleich im angemeldeten Dashboard", () => {
+test.describe("Steuervergleich in der Steuerübersicht", () => {
   test.beforeEach(async ({ page }) => {
     test.skip(!qaEmail || !qaPassword, "Nur mit temporären QA-Zugangsdaten ausführen.");
-    await page.goto("/login?next=%2Fapp");
+    await page.goto("/login?next=%2Fapp%2Fsteuern%2Fszenarien");
     await page.getByLabel("E-Mail-Adresse").fill(qaEmail!);
     await page.getByLabel("Passwort", { exact: true }).fill(qaPassword!);
     await page.getByRole("button", { name: "Anmelden", exact: true }).click();
-    await expect(page).toHaveURL(/\/app$/);
-    await expect(page.getByRole("heading", { name: "Dein Steuer-Dashboard." })).toBeVisible();
+    await expect(page).toHaveURL(/\/app\/steuern\/szenarien$/);
+    await expect(page.getByRole("heading", { name: "Steuerszenarien & Abschreibung." })).toBeVisible();
   });
+
+test("die Abschreibungsmaske liegt unter Steuerübersicht und nicht im Dashboard", async ({ page }) => {
+  await page.goto("/app");
+  await expect(page.getByRole("heading", { name: "Portfolio-Cockpit" })).toBeVisible();
+  await expect(page.getByTestId("investment-workspace")).toHaveCount(0);
+  await page.goto("/app/steuern");
+  await page.getByRole("link", { name: "Szenarien & Abschreibung", exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/steuern\/szenarien$/);
+  await expect(page.getByTestId("investment-workspace")).toBeVisible();
+});
 
 test("AfA-Basis, Monatsanteil und Live-Neuberechnung bleiben nachvollziehbar", async ({ page }) => {
   const errors: string[] = [];
@@ -64,7 +74,7 @@ test("Denkmal trennt begünstigte Kosten und Eigennutzung korrekt", async ({ pag
   await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
 });
 
-test("bis zu drei Varianten lassen sich im Dashboard vergleichen und exportieren", async ({ page }) => {
+test("bis zu drei Varianten lassen sich in der Steuerübersicht vergleichen und exportieren", async ({ page }) => {
   await page.getByRole("textbox", { name: "Szenarioname" }).fill("Wohnung Berlin");
   await page.getByRole("button", { name: "Szenario vergleichen", exact: true }).click();
   await page.getByRole("textbox", { name: "Szenarioname" }).fill("Wohnung Hamburg");
@@ -96,8 +106,8 @@ test("ungültige Eingaben blockieren Berechnung und Speichern", async ({ page })
 for (const path of ["/app", "/app/steuervergleich", "/rechner"]) {
   test(`Steuervergleich ${path} ist ohne Sitzung geschützt`, async ({ page }) => {
     await page.goto(path);
-    const expectedTarget = path === "/rechner" ? "/app" : path;
+    const expectedTarget = path === "/rechner" ? "/app/steuern/szenarien" : path;
     await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(expectedTarget)}$`));
-    await expect(page.getByRole("heading", { name: "Dein Steuer-Dashboard." })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Steuerszenarien & Abschreibung." })).toHaveCount(0);
   });
 }

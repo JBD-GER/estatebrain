@@ -140,6 +140,7 @@ export async function getLiveDashboardSnapshot() {
   const viewer = await requireOrganization();
   const supabase = await createClient();
   const dynamicSupabase = supabase as unknown as SupabaseClient;
+  const rentSync = hasPermission(viewer.role,"bookkeeping.write") || hasPermission(viewer.role,"portfolio.write") ? await supabase.rpc("sync_automatic_rent",{p_organization_id:viewer.organizationId}) : null;
   const asOfDate = dateInBerlin();
   const historyStart = firstDashboardMonth(asOfDate);
   const bookkeepingAvailable = hasPermission(
@@ -239,7 +240,7 @@ export async function getLiveDashboardSnapshot() {
             supabase
               .from("expense_entries")
               .select(
-                "property_id,entry_date,amount_cents,bank_transaction_id,is_cash_effective,is_interest,is_principal,is_capitalizable,is_deductible,payment_status",
+                "property_id,renovation_project_id,entry_date,amount_cents,bank_transaction_id,is_cash_effective,is_interest,is_principal,is_capitalizable,is_deductible,payment_status",
               )
               .eq("organization_id", viewer.organizationId)
               .gte("entry_date", historyStart)
@@ -310,7 +311,7 @@ export async function getLiveDashboardSnapshot() {
         supabase
           .from("renovation_projects")
           .select(
-            "id,property_id,name,estimated_cost_cents,planned_start_date,priority,status",
+            "id,property_id,name,estimated_cost_cents,actual_cost_cents,actual_end_date,planned_start_date,priority,status",
           )
           .eq("organization_id", viewer.organizationId)
           .is("archived_at", null)
@@ -362,6 +363,7 @@ export async function getLiveDashboardSnapshot() {
     depreciationResult,
   ] = results as QueryResult[];
   const issues = new Set<string>();
+  if(rentSync?.error) issues.add("Automatische Mietbuchungen konnten nicht aktualisiert werden.");
   if (!loansAvailable) {
     issues.add(
       "Finanzierungsdaten sind für deine aktuelle Rolle nicht verfügbar; Restschuld, Eigenkapital, LTV und Zinsbindungsende werden deshalb nicht berechnet.",
@@ -493,6 +495,7 @@ export async function getLiveDashboardSnapshot() {
   const expenses: DashboardExpenseSource[] = asRows(
     expensesResult.data,
   ).map((row) => ({
+    renovationProjectId: optionalText(row.renovation_project_id),
     propertyId: optionalText(row.property_id),
     entryDate: text(row.entry_date),
     amountCents: cents(row.amount_cents, issues) ?? 0,
@@ -545,6 +548,8 @@ export async function getLiveDashboardSnapshot() {
     id: text(row.id),
     propertyId: text(row.property_id),
     name: text(row.name, "Sanierungsvorhaben"),
+    actualCostCents: cents(row.actual_cost_cents,issues) ?? 0,
+    actualEndDate: optionalText(row.actual_end_date),
     estimatedCostCents:
       cents(row.estimated_cost_cents, issues) ?? 0,
     plannedStartDate: optionalText(row.planned_start_date),

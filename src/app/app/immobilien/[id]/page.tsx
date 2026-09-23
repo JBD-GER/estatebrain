@@ -1,3 +1,5 @@
+import { RecordActions } from "@/components/app/record-actions";
+import { expensesWithRenovationCompletion } from "@/lib/dashboard/renovation-cashflow";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -109,6 +111,7 @@ export default async function PropertyDetailPage({
     .select("*")
     .eq("id", id)
     .eq("organization_id", viewer.organizationId)
+    .is("archived_at",null)
     .maybeSingle();
 
   if (!property) notFound();
@@ -140,6 +143,7 @@ export default async function PropertyDetailPage({
     supabase
       .from("renovation_projects")
       .select("*")
+      .is("archived_at",null)
       .eq("organization_id", viewer.organizationId)
       .eq("property_id", id)
       .order("created_at", { ascending: false }),
@@ -166,7 +170,7 @@ export default async function PropertyDetailPage({
       ? supabase
           .from("expense_entries")
           .select(
-            "id, amount_cents, description, entry_date, payment_status, document_status, is_cash_effective, is_interest, is_principal",
+            "id, renovation_project_id, amount_cents, description, entry_date, payment_status, document_status, is_cash_effective, is_interest, is_principal",
           )
           .eq("organization_id", viewer.organizationId)
           .eq("property_id", id)
@@ -177,6 +181,8 @@ export default async function PropertyDetailPage({
       : Promise.resolve({ data: [] }),
   ]);
 
+  const recordRelations = {properties:[{value:property.id,label:property.name}],units:[],tenants:[]};
+  const canEditPortfolio = hasPermission(viewer.role,"portfolio.write");
   const unitRows = units ?? [];
   const loanRows = loans ?? [];
   const expenseRows = expenses ?? [];
@@ -325,13 +331,14 @@ export default async function PropertyDetailPage({
   const paidCashExpenses = expenseRows.filter(
     (row) => row.payment_status === "paid" && row.is_cash_effective,
   );
-  const totalExpenseCents = paidCashExpenses.reduce(
-    (sum, row) => sum + Number(row.amount_cents ?? 0),
+  const cashExpenses = expensesWithRenovationCompletion(paidCashExpenses.map(e=>({propertyId:property.id,renovationProjectId:e.renovation_project_id,entryDate:e.entry_date,amountCents:e.amount_cents,bankTransactionId:null,cashEffective:true,isInterest:e.is_interest,isPrincipal:e.is_principal,isCapitalizable:false,isDeductible:false})), (renovations ?? []).map(r=>({id:r.id,propertyId:r.property_id,name:r.name,status:r.status,priority:r.priority,estimatedCostCents:r.estimated_cost_cents,actualCostCents:r.actual_cost_cents,actualEndDate:r.actual_end_date,plannedStartDate:r.planned_start_date}))).filter(e=>e.entryDate>=yearStart && e.entryDate<=today);
+  const totalExpenseCents = cashExpenses.reduce(
+    (sum, row) => sum + row.amountCents,
     0,
   );
-  const operatingExpenseCents = paidCashExpenses
-    .filter((row) => !row.is_interest && !row.is_principal)
-    .reduce((sum, row) => sum + Number(row.amount_cents ?? 0), 0);
+  const operatingExpenseCents = cashExpenses
+    .filter((row) => !row.isInterest && !row.isPrincipal)
+    .reduce((sum, row) => sum + row.amountCents, 0);
 
   const confirmedLoanPayments = (loanPaymentResult.data ?? []).filter((row) => {
     const effectiveDate = row.paid_on ?? row.due_date;
@@ -435,6 +442,8 @@ export default async function PropertyDetailPage({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canEditPortfolio && <RecordActions module="immobilien" record={property} afterDeleteHref="/app/immobilien"/>}
+          <Button asChild variant="outline"><Link href={`/app/markt?property=${property.id}`}>Immobilie bewerten</Link></Button>
           {canCreateFinancing ? (
             <Button asChild variant="outline">
               <Link
@@ -669,6 +678,7 @@ export default async function PropertyDetailPage({
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary">{status(unit.status)}</Badge>
+                          {canEditPortfolio && <RecordActions module="einheiten" record={unit} relations={recordRelations}/>}
                         </TableCell>
                       </TableRow>
                     );
@@ -781,6 +791,7 @@ export default async function PropertyDetailPage({
                     </span>
                     <span>{formatDate(loan.fixed_rate_until)}</span>
                   </div>
+                  {canCreateFinancing && <RecordActions module="finanzierungen" record={loan} relations={recordRelations}/>}
                 </CardContent>
               </Card>
             ))}
@@ -892,10 +903,11 @@ export default async function PropertyDetailPage({
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Wrench className="size-4 text-primary" />
-                  {project.name}
+                  <Link className="underline" href={`/app/sanierungen/${project.id}`}>{project.name}</Link>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
+                {canEditPortfolio && <RecordActions module="sanierungen" record={project} relations={recordRelations}/>}
                 <div className="flex justify-between gap-4">
                   <span className="text-muted-foreground">Budget</span>
                   <span>{cents(project.estimated_cost_cents)}</span>

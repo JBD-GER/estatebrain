@@ -1,7 +1,8 @@
 "use client";
 
 import { Building2, House, Landmark, ChevronDown, Info } from "lucide-react";
-import type { InvestmentTaxInput } from "@/lib/domain/investment-tax";
+import { DEFAULT_INVESTMENT_CASHFLOW } from "@/lib/domain/investment-cashflow";
+import type { InvestmentCashflowInput, InvestmentTaxInput } from "@/lib/domain/investment-tax";
 import { cn } from "@/lib/utils";
 
 function NumberField({ label, value, onChange, suffix = "€", hint, min = 0, max, step = "any" }: {
@@ -47,12 +48,14 @@ function FormSection({ number, title, children, open = false }: { number: string
 }
 
 export function InvestmentFields({ input, onChange }: { input: InvestmentTaxInput; onChange: (patch: Partial<InvestmentTaxInput>) => void }) {
+  const cashflow = input.cashflow ?? DEFAULT_INVESTMENT_CASHFLOW;
+  const changeCashflow = (patch: Partial<InvestmentCashflowInput>) => onChange({ cashflow: { ...cashflow, ...patch } });
   const money = (key: "purchasePriceCents" | "acquisitionCostsCents" | "capitalizedMeasuresCents" | "certifiedHeritageCostsCents", value: number) => onChange({ [key]: Math.round(value * 100) });
   return <div>
     <FormSection number="01" title="Deine Immobilie" open>
       <div className="grid grid-cols-3 gap-2" aria-label="Immobilienart">
         {([{ value: "existing", label: "Bestand", icon: House }, { value: "new_build", label: "Neubau", icon: Building2 }, { value: "heritage", label: "Denkmal", icon: Landmark }] as const).map(({ value, label, icon: Icon }) =>
-          <button key={value} type="button" aria-pressed={input.propertyKind === value} onClick={() => { if (input.propertyKind !== value) onChange({ propertyKind: value, certifiedHeritageCostsCents: 0, heritageCompletionDate: undefined, heritageEligibilityConfirmed: false, special7bEnabled: false, special7bEligibilityConfirmed: false, degressiveEligibilityConfirmed: false, contractDate: undefined, buildingApplicationDate: undefined }); }}
+          <button key={value} type="button" aria-pressed={input.propertyKind === value} onClick={() => { if (input.propertyKind !== value) onChange({ propertyKind: value, linearSwitchAfterYears: value === "new_build" ? 6 : undefined, autoSwitchToLinear: value !== "new_build", certifiedHeritageCostsCents: 0, heritageCompletionDate: undefined, heritageEligibilityConfirmed: false, special7bEnabled: false, special7bEligibilityConfirmed: false, degressiveEligibilityConfirmed: false, contractDate: undefined, buildingApplicationDate: undefined }); }}
             className={cn("flex flex-col items-center gap-2 rounded-xl border px-2 py-3 text-xs transition", input.propertyKind === value ? "border-primary bg-primary/5 font-semibold text-primary ring-1 ring-primary" : "bg-card text-muted-foreground hover:border-primary/40")}>
             <Icon className="size-5" />{label}
           </button>)}
@@ -83,7 +86,13 @@ export function InvestmentFields({ input, onChange }: { input: InvestmentTaxInpu
     {input.propertyKind === "new_build" && input.usage === "rented" ? <FormSection number="03" title="Neubau & Förderbedingungen" open>
       <DateField label="Notarieller Kaufvertrag" value={input.contractDate} onChange={(contractDate) => onChange({ contractDate })} hint="Für die degressive AfA muss der Vertrag nach dem 30.09.2023 und vor dem 01.10.2029 liegen." />
       <Confirmation label="Wohngebäude in EU/EWR; Erwerb bis zum Ende des Fertigstellungsjahres. Die Voraussetzungen für § 7 Abs. 5a sind geprüft." checked={input.degressiveEligibilityConfirmed} onChange={(degressiveEligibilityConfirmed) => onChange({ degressiveEligibilityConfirmed })} />
-      <Confirmation label="Automatisch zur linearen AfA wechseln, sobald der jährliche Abzug höher ist." checked={input.autoSwitchToLinear} onChange={(autoSwitchToLinear) => onChange({ autoSwitchToLinear })} />
+      <label className="block space-y-2 text-xs"><span className="font-medium">Wechsel zur linearen AfA</span>
+        <select className="h-11 w-full rounded-xl border bg-background/40 px-3" value={input.linearSwitchAfterYears !== undefined ? input.linearSwitchAfterYears === 6 ? "six" : "custom" : input.autoSwitchToLinear !== false ? "automatic" : "never"}
+          onChange={(event) => onChange({ linearSwitchAfterYears: event.target.value === "six" ? 6 : event.target.value === "custom" ? input.linearSwitchAfterYears : undefined, autoSwitchToLinear: event.target.value === "automatic" })}>
+          {input.linearSwitchAfterYears !== undefined && input.linearSwitchAfterYears !== 6 ? <option value="custom">Nach {input.linearSwitchAfterYears} Steuerjahren</option> : null}<option value="six">Nach 6 Steuerjahren</option><option value="automatic">Sobald die lineare AfA höher ist</option><option value="never">Durchgehend 5 % degressiv</option>
+        </select>
+      </label>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">5 % vom jeweiligen Restwert, im ersten Jahr monatsanteilig. Beim Wechsel wird der Restwert auf die Restnutzungsdauer verteilt. Die 3 % gelten für die lineare Alternative ab Beginn; nach dem Wechsel werden nicht erneut 3 % der ursprünglichen Basis angesetzt. Das Anschaffungsjahr zählt als erstes Steuerjahr.</p>
       <Confirmation label="Sonderabschreibung nach § 7b EStG berücksichtigen" checked={input.special7bEnabled} onChange={(special7bEnabled) => onChange({ special7bEnabled })} />
       {input.special7bEnabled ? <div className="space-y-3 rounded-xl bg-secondary/40 p-3">
         <DateField label="Bauantrag / Bauanzeige" value={input.buildingApplicationDate} onChange={(buildingApplicationDate) => onChange({ buildingApplicationDate })} />
@@ -102,7 +111,29 @@ export function InvestmentFields({ input, onChange }: { input: InvestmentTaxInpu
         checked={input.heritageEligibilityConfirmed} onChange={(heritageEligibilityConfirmed) => onChange({ heritageEligibilityConfirmed })} />
       <div className="flex gap-2 text-[11px] leading-relaxed text-muted-foreground"><Info className="mt-0.5 size-4 shrink-0" /><p>{input.usage === "rented" ? "Nur die begünstigten Maßnahmen: 8 Jahre × 9 %, danach 4 Jahre × 7 %. Die restliche Gebäudebasis wird regulär abgeschrieben." : "10 Jahre × 9 % der begünstigten Kosten als Sonderausgaben. Keine normale Gebäude-AfA bei Eigennutzung."}</p></div>
     </FormSection> : null}
-    <FormSection number="04" title="Persönliche Annahmen" open>
+    <FormSection number="04" title="Miete & laufende Kosten" open>
+      {input.usage === "rented" ? <>
+        <NumberField label="Prognostizierte Kaltmiete pro Monat" value={cashflow.monthlyColdRentCents / 100} max={1000000} onChange={(value) => changeCashflow({ monthlyColdRentCents: Math.round(value * 100) })} hint="Ohne durchlaufende Nebenkosten. 0 € bedeutet keine prognostizierten Mieteinnahmen." />
+        <DateField label="Prognostizierter Mietbeginn" value={cashflow.rentStartsOn} onChange={(rentStartsOn) => changeCashflow({ rentStartsOn })} hint="Leer: ab Anschaffung bzw. Fertigstellung. Der Startmonat zählt vollständig." />
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField label="Mietsteigerung pro Jahr" suffix="%" value={Math.round(cashflow.annualRentGrowthRate * 10000) / 100} max={10} onChange={(value) => changeCashflow({ annualRentGrowthRate: value / 100 })} />
+          <NumberField label="Mietausfall / Leerstand" suffix="%" value={Math.round(cashflow.vacancyRate * 10000) / 100} max={100} onChange={(value) => changeCashflow({ vacancyRate: value / 100 })} />
+        </div>
+        <p className="text-[11px] text-muted-foreground">Mietsteigerung nach jeweils 12 Monaten ab Mietbeginn als Prognoseannahme; keine automatische Vertragsänderung.</p>
+      </> : <p className="text-xs text-muted-foreground">Bei Eigennutzung werden keine Mieteinnahmen angesetzt.</p>}
+      <NumberField label="Laufende Eigentümerkosten pro Monat" value={cashflow.monthlyOwnerCostsCents / 100} max={1000000} onChange={(value) => changeCashflow({ monthlyOwnerCostsCents: Math.round(value * 100) })} hint="Ab Anschaffung: selbst getragene laufende Kosten, bei Vermietung sofort abziehbar. Keine Rücklagen oder aktivierungspflichtigen Sanierungen." />
+    </FormSection>
+    <FormSection number="05" title="Finanzierung im Szenario" open>
+      <NumberField label="Darlehensbetrag" value={cashflow.loanAmountCents / 100} onChange={(value) => changeCashflow({ loanAmountCents: Math.round(value * 100) })} hint="0 € für einen Kauf ohne Darlehen. Modelliert wird ein Annuitätendarlehen für diese Immobilie." />
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField label="Sollzins pro Jahr" suffix="%" value={Math.round(cashflow.annualInterestRate * 10000) / 100} max={30} onChange={(value) => changeCashflow({ annualInterestRate: value / 100 })} />
+        <NumberField label="Anfängliche Tilgung" suffix="%" value={Math.round(cashflow.initialRepaymentRate * 10000) / 100} max={100} onChange={(value) => changeCashflow({ initialRepaymentRate: value / 100 })} />
+      </div>
+      <DateField label="Darlehensbeginn" value={cashflow.loanStartsOn} onChange={(loanStartsOn) => changeCashflow({ loanStartsOn })} hint="Leer: ab Anschaffung. Auszahlung und erste Monatsrate werden im Startmonat angenommen." />
+      <p className="text-[11px] leading-relaxed text-muted-foreground">Gleichbleibende Monatsrate und konstanter Sollzins über den Betrachtungszeitraum; keine Sondertilgungen oder Anschlussfinanzierung. Zinsen werden bei Vermietung steuerlich berücksichtigt, Tilgung vermindert nur den Cashflow.</p>
+      <button type="button" className="text-xs font-medium text-primary underline" onClick={() => changeCashflow({ loanAmountCents: 0, annualInterestRate: 0, initialRepaymentRate: 0, loanStartsOn: undefined })}>Finanzierungsangaben löschen</button>
+    </FormSection>
+    <FormSection number="06" title="Persönliche Annahmen" open>
       <div className="grid grid-cols-2 gap-3">
         <NumberField label="Grenzsteuersatz" suffix="%" value={Math.round(input.marginalTaxRate * 10000) / 100} max={60} onChange={(value) => onChange({ marginalTaxRate: value / 100 })} />
         <NumberField label="Betrachtungszeitraum" suffix="Jahre" value={input.years} min={1} max={60} step="1" onChange={(years) => onChange({ years })} />

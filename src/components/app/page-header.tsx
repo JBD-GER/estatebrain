@@ -6,13 +6,16 @@ export function PageHeader({
   description,
   actions,
   demo = false,
+  headingLevel = 1,
 }: {
   eyebrow?: string;
   title: string;
   description?: string;
   actions?: React.ReactNode;
   demo?: boolean;
+  headingLevel?: 1 | 2;
 }) {
+  const Heading = headingLevel === 2 ? "h2" : "h1";
   return (
     <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
@@ -22,9 +25,9 @@ export function PageHeader({
           ) : null}
           {demo ? <Badge variant="secondary">Demo</Badge> : null}
         </div>
-        <h1 className="mt-1 text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+        <Heading className="mt-1 text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
           {title}
-        </h1>
+        </Heading>
         {description ? (
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">
             {description}

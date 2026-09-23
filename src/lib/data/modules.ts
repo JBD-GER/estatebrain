@@ -55,7 +55,7 @@ function createModuleQueryPlan(
       continue;
     }
 
-    const dependency = derivedColumnDependencies[column.key];
+    const dependency = ["email", "display_name"].includes(column.key) && definition.slug !== "team" ? undefined : derivedColumnDependencies[column.key];
     if (dependency) {
       derivedColumns.add(column.key);
       selectColumns.add(dependency);
@@ -72,6 +72,7 @@ function createModuleQueryPlan(
 
   for (const field of definition.fields) {
     if (field.relation) relationOptions.add(field.relation);
+    if (!field.virtual) selectColumns.add(field.name);
   }
   if (relationOptions.has("units")) relationOptions.add("properties");
 
@@ -134,6 +135,10 @@ export async function getModulePageData(slug: string) {
       ? query.eq("id", viewer.organizationId)
       : query.eq("organization_id", viewer.organizationId);
 
+  if (["properties", "units", "leases", "loans", "renovation_projects", "tasks", "conversations", "documents", "tenants"].includes(definition.table)) {
+    query = query.is("archived_at", null);
+  }
+
   if (slug === "daten-pruefen") {
     query = query.neq("review_status", "reviewed");
   }
@@ -143,7 +148,6 @@ export async function getModulePageData(slug: string) {
     { data: properties, error: propertiesError },
     { data: units, error: unitsError },
     { data: tenants, error: tenantsError },
-    { data: unitCapacityRows, error: unitCapacityError },
   ] = await Promise.all([
     query.order("created_at", { ascending: false }).limit(100),
     plan.relationOptions.has("properties")
@@ -168,36 +172,20 @@ export async function getModulePageData(slug: string) {
           .eq("organization_id", viewer.organizationId)
           .order("last_name")
       : Promise.resolve({ data: [], error: null }),
-    slug === "einheiten"
-      ? supabase
-          .from("units")
-          .select("property_id")
-          .eq("organization_id", viewer.organizationId)
-          .is("archived_at", null)
-      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const relationErrors: RelationLoadErrors = {
-    ...(propertiesError || unitCapacityError ? { properties: true } : {}),
+    ...(propertiesError ? { properties: true } : {}),
     ...(unitsError ? { units: true } : {}),
     ...(tenantsError ? { tenants: true } : {}),
   };
 
-  const propertyIdsWithUnits = new Set(
-    (unitCapacityRows ?? []).map((unit) => String(unit.property_id)),
-  );
   const allPropertyOptions = (properties ?? []).map((property) => ({
     value: String(property.id),
     label: asText(property.name) || "Immobilie",
     propertyType: asText(property.property_type),
   }));
   const propertyOptions = allPropertyOptions
-    .filter(
-      (property) =>
-        slug !== "einheiten" ||
-        property.propertyType === "apartment_building" ||
-        !propertyIdsWithUnits.has(property.value),
-    )
     .map((property) => ({
       value: property.value,
       label: property.label,
@@ -308,7 +296,6 @@ export async function getModulePageData(slug: string) {
       propertiesError?.message ??
       unitsError?.message ??
       tenantsError?.message ??
-      unitCapacityError?.message ??
       null,
     forbidden: false,
     canCreate,

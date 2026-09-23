@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { startTransition, useActionState, useEffect, useMemo, useState } from "react";
+import { RenovationSelect, type RenovationOption } from "@/components/documents/renovation-select";
 import { useRouter } from "next/navigation";
 import { CircleAlert, Loader2, Save, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -47,6 +48,7 @@ export type ReviewFormDocument = {
   title: string | null;
   documentType: string;
   documentDate: string | null;
+  renovationProjectId?: string | null;
   paymentStatus: string | null;
   propertyId: string | null;
   unitId: string | null;
@@ -113,12 +115,14 @@ export function DocumentReviewForm({
   properties,
   units,
   leases,
+  renovations,
   categories,
 }: {
   document: ReviewFormDocument;
   properties: PropertyOption[];
   units: UnitOption[];
   leases: LeaseOption[];
+  renovations: RenovationOption[];
   categories: CategoryOption[];
 }) {
   const router = useRouter();
@@ -171,7 +175,7 @@ export function DocumentReviewForm({
     expense?.taxAmountCents ?? extraction?.taxAmountCents;
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);startTransition(()=>formAction(data));}} className="space-y-6">
       <input type="hidden" name="documentId" value={document.id} />
 
       {state.status === "error" ? (
@@ -450,6 +454,7 @@ export function DocumentReviewForm({
         </div>
       </section>
 
+      <RenovationSelect propertyId={propertyId} renovations={renovations} defaultValue={document.renovationProjectId}/>
       <Separator />
 
       <section className="space-y-4">

@@ -12,6 +12,7 @@ import {
   FilePlus2,
   Loader2,
   Plus,
+  Pencil,
   Search,
   Upload,
 } from "lucide-react";
@@ -29,13 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
 import {
   Table,
   TableBody,
@@ -69,6 +64,9 @@ import {
 } from "@/lib/modules/interactions";
 import { moduleRowRequiresAttention } from "@/lib/modules/summary";
 import { propertyTypeLabel } from "@/lib/domain/property";
+
+import { DeleteRecordButton } from "@/components/app/delete-record-button";
+import { editableModules, recordFieldValues } from "@/lib/modules/lifecycle";
 
 const initialState: CreateRecordState = { status: "idle" };
 
@@ -202,19 +200,25 @@ function RowActionLink({ action }: { action: ModuleRowAction }) {
   );
 }
 
-function CreateRecordDialog({
+export function CreateRecordDialog({
   definition,
   relations,
   relationErrors,
   initialFieldValues,
   initiallyOpen,
+  record,
 }: {
   definition: ModuleDefinition;
   relations: RelationOptions;
   relationErrors: RelationLoadErrors;
   initialFieldValues?: Record<string, string>;
   initiallyOpen?: boolean;
+  record?: ModuleRow;
 }) {
+  const defaults = record ? {
+    ...recordFieldValues(definition.fields, record),
+    rent_effective_from: new Date().toLocaleDateString("sv-SE", {timeZone: "Europe/Berlin"}).slice(0, 7) + "-01",
+  } as Record<string, string> : { ...(definition.slug === "sanierungen" ? {status: "open", actual_cost_cents: "0"} : {}), ...initialFieldValues };
   const [open, setOpen] = useState(Boolean(initiallyOpen));
   const [state, setState] = useState(initialState);
   const [pending, startTransition] = useTransition();
@@ -253,21 +257,21 @@ function CreateRecordDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus />
-          {definition.createLabel ?? "Neu anlegen"}
+        <Button variant={record ? "ghost" : "default"} size={record ? "sm" : "default"}>
+          {record ? <Pencil /> : <Plus />}
+          {record ? "Bearbeiten" : definition.createLabel ?? "Neu anlegen"}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{definition.createLabel ?? "Datensatz anlegen"}</DialogTitle>
+          <DialogTitle>{record ? `${definition.title}: Bearbeiten` : definition.createLabel ?? "Datensatz anlegen"}</DialogTitle>
           <DialogDescription>
-            Pflichtangaben werden serverseitig geprüft und deiner aktuellen
-            Organisation zugeordnet.
+            {record ? "Passe die Angaben an und speichere deine Änderungen." : "Erfasse die Angaben für diesen Eintrag."}
           </DialogDescription>
         </DialogHeader>
-        <form action={action} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={event=>{event.preventDefault();action(new FormData(event.currentTarget));}} className="grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="module" value={definition.slug} />
+          {record ? <><input type="hidden" name="recordId" value={text(record.id)} /><input type="hidden" name="updatedAt" value={text(record.updated_at)} /></> : null}
           {state.status === "error" && state.message ? (
             <Alert variant="destructive" className="sm:col-span-2">
               <CircleAlert />
@@ -321,29 +325,10 @@ function CreateRecordDialog({
                   {field.required ? " *" : ""}
                 </Label>
                 {field.type === "select" ? (
-                  <Select
-                    name={field.name}
-                    defaultValue={initialFieldValues?.[field.name]}
-                    required={field.required}
-                    disabled={Boolean(
-                      field.relation &&
-                        (relationLoadFailed || relationIsEmpty),
-                    )}
-                  >
-                    <SelectTrigger
-                      id={field.name}
-                      aria-invalid={Boolean(fieldError || relationLoadFailed)}
-                    >
-                      <SelectValue placeholder="Bitte auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {options.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <select name={field.name} id={field.name} defaultValue={defaults[field.name] ?? ""} required={field.required} disabled={Boolean(field.relation && (relationLoadFailed || relationIsEmpty))} aria-invalid={Boolean(fieldError || relationLoadFailed)} className="h-10 w-full rounded-md border bg-background px-3">
+                    <option value="">{field.required ? "Bitte auswählen" : "Keine Zuordnung"}</option>
+                    {options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
                 ) : field.type === "textarea" ? (
                   <Textarea
                     id={field.name}
@@ -351,6 +336,7 @@ function CreateRecordDialog({
                     placeholder={field.placeholder}
                     required={field.required}
                     rows={4}
+                    defaultValue={defaults[field.name]}
                     aria-invalid={Boolean(fieldError)}
                   />
                 ) : (
@@ -373,7 +359,7 @@ function CreateRecordDialog({
                       step={field.type === "money" ? "0.01" : "any"}
                       className={cn(field.type === "money" && "pr-9")}
                       placeholder={field.placeholder}
-                      defaultValue={initialFieldValues?.[field.name]}
+                      defaultValue={defaults[field.name]}
                       required={field.required}
                       aria-invalid={Boolean(fieldError)}
                     />
@@ -553,6 +539,8 @@ export function ModuleWorkspace({
   notice,
   initialFieldValues,
   initiallyOpenCreate,
+  afterDeleteHref,
+  headingLevel = 1,
 }: {
   definition: ModuleDefinition;
   rows: ModuleRow[];
@@ -565,6 +553,8 @@ export function ModuleWorkspace({
   notice?: React.ReactNode;
   initialFieldValues?: Record<string, string>;
   initiallyOpenCreate?: boolean;
+  afterDeleteHref?: string;
+  headingLevel?: 1 | 2;
 }) {
   const [query, setQuery] = useState("");
   const filteredRows = useMemo(() => {
@@ -576,18 +566,20 @@ export function ModuleWorkspace({
       ),
     );
   }, [query, rows]);
+  const canEdit = canCreate && editableModules.has(definition.slug);
   const hasRowActions = useMemo(
-    () =>
+    () => canEdit ||
       rows.some((row) =>
         Boolean(getModuleRowAction(definition.slug, row.id)),
       ),
-    [definition.slug, rows],
+    [definition.slug, rows, canEdit],
   );
 
   if (forbidden) {
     return (
       <>
         <PageHeader
+          headingLevel={headingLevel}
           eyebrow={definition.eyebrow}
           title={definition.title}
           description={definition.description}
@@ -647,6 +639,7 @@ export function ModuleWorkspace({
   return (
     <>
       <PageHeader
+          headingLevel={headingLevel}
         eyebrow={definition.eyebrow}
         title={definition.title}
         description={definition.description}
@@ -748,9 +741,11 @@ export function ModuleWorkspace({
                         ))}
                         {hasRowActions ? (
                           <TableCell className="whitespace-nowrap">
-                            {rowAction ? (
-                              <RowActionLink action={rowAction} />
-                            ) : null}
+                            {rowAction ? <RowActionLink action={rowAction} /> : null}
+                            {canEdit && row.id && row.source_name !== "Somantic" ? <>
+                              <CreateRecordDialog key={`${row.id}:${text(row.updated_at)}`} definition={definition} relations={relations} relationErrors={relationErrors} record={row} />
+                              <DeleteRecordButton afterDeleteHref={afterDeleteHref} module={definition.slug} id={row.id} updatedAt={text(row.updated_at)} name={text(row[definition.columns[0]?.key]) || definition.title} />
+                            </> : null}
                           </TableCell>
                         ) : null}
                       </TableRow>

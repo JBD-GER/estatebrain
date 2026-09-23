@@ -1,3 +1,5 @@
+import { MessageActions } from "@/components/app/message-actions";
+import { RecordActions } from "@/components/app/record-actions";
 import {
   CheckCircle2,
   CircleAlert,
@@ -116,7 +118,7 @@ export default async function CommunicationPage({
     supabase
       .from("conversations")
       .select(
-        "id, lease_id, subject, category, priority, status, last_message_at, created_at",
+        "id, lease_id, subject, category, priority, status, last_message_at, created_at, updated_at",
         { count: "exact" },
       )
       .eq("organization_id", viewer.organizationId)
@@ -193,7 +195,7 @@ export default async function CommunicationPage({
           supabase
             .from("messages")
             .select(
-              "id, conversation_id, author_user_id, author_tenant_id, body, is_internal_note, sent_at",
+              "id, conversation_id, author_user_id, author_tenant_id, body, is_internal_note, sent_at, edited_at, updated_at",
             )
             .eq("organization_id", viewer.organizationId)
             .in("conversation_id", conversationIds)
@@ -333,6 +335,7 @@ export default async function CommunicationPage({
                       <div className="flex gap-2">
                         <Badge variant="outline">{conversation.category}</Badge>
                         <Badge>{conversation.status}</Badge>
+                        <RecordActions module="kommunikation" record={conversation}/>
                       </div>
                     </div>
                   </CardHeader>
@@ -362,6 +365,8 @@ export default async function CommunicationPage({
                               <span>{messageDate(message.sent_at)}</span>
                             </div>
                             <p className="whitespace-pre-wrap">{message.body}</p>
+                            {message.edited_at ? <p className="mt-1 text-[10px] text-muted-foreground">Bearbeitet</p> : null}
+                            {message.author_user_id === viewer.userId && !fromTenant ? <MessageActions message={message} /> : null}
                           </div>
                         );
                       })}

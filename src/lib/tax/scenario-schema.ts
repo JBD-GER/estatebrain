@@ -38,6 +38,18 @@ export const investmentTaxInputSchema = z.strictObject({
   qngCertified: z.boolean().optional(),
   tenYearRentalConfirmed: z.boolean().optional(),
   autoSwitchToLinear: z.boolean().optional(),
+  linearSwitchAfterYears: z.number().int().min(4).max(50).optional(),
+  cashflow: z.strictObject({
+    monthlyColdRentCents: cents.max(100_000_000),
+    rentStartsOn: optionalDate,
+    annualRentGrowthRate: z.number().finite().min(0).max(0.1),
+    vacancyRate: z.number().finite().min(0).max(1),
+    monthlyOwnerCostsCents: cents.max(100_000_000),
+    loanAmountCents: cents,
+    annualInterestRate: z.number().finite().min(0).max(0.3),
+    initialRepaymentRate: z.number().finite().min(0).max(1),
+    loanStartsOn: optionalDate,
+  }).optional(),
 }).superRefine((input, context) => {
   for (const issue of validateInvestmentTaxInput(input)) {
     context.addIssue({ code: "custom", path: [issue.field], message: issue.message });

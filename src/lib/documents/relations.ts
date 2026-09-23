@@ -1,5 +1,6 @@
 export type DocumentRelationSelection = {
   propertyId?: string;
+  renovationProjectId?: string;
   unitId?: string;
   leaseId?: string;
   tenantVisible: boolean;
@@ -7,6 +8,7 @@ export type DocumentRelationSelection = {
 
 export type DocumentRelationRecords = {
   property: { id: string } | null;
+  renovation?: {id:string;property_id:string} | null;
   unit: { id: string; property_id: string } | null;
   lease: { id: string; unit_id: string } | null;
 };
@@ -18,6 +20,8 @@ export function validateDocumentRelationSelection(
   if (selection.propertyId && records.property?.id !== selection.propertyId) {
     return "Die ausgewählte Immobilie ist nicht verfügbar.";
   }
+
+  if (selection.renovationProjectId && (records.renovation?.id !== selection.renovationProjectId || records.renovation.property_id !== selection.propertyId)) return "Die Sanierung gehört nicht zur ausgewählten Immobilie.";
 
   if (selection.unitId) {
     if (!selection.propertyId) {

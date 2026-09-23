@@ -1,3 +1,5 @@
+import { DocumentMetadataForm } from "@/components/documents/document-metadata-form";
+import { DeleteRecordButton } from "@/components/app/delete-record-button";
 import Link from "next/link";
 import {
   CheckCircle2,
@@ -123,11 +125,12 @@ export default async function DocumentsPage({
     unitsResult,
     leasesResult,
     categoriesResult,
+    renovationsResult,
   ] = await Promise.all([
     supabase
       .from("documents")
       .select(
-        "id, original_file_name, title, document_type, document_date, review_status, ocr_status, payment_status, property_id, unit_id, lease_id, tenant_visible, created_at",
+        "id, original_file_name, title, document_type, document_date, review_status, ocr_status, payment_status, property_id, unit_id, lease_id, renovation_project_id, tenant_visible, created_at, updated_at",
       )
       .eq("organization_id", viewer.organizationId)
       .is("archived_at", null)
@@ -160,6 +163,7 @@ export default async function DocumentsPage({
       .is("archived_at", null)
       .order("sort_order")
       .order("name"),
+    supabase.from("renovation_projects").select("id,property_id,name").eq("organization_id",viewer.organizationId).is("archived_at",null).order("name"),
   ]);
 
   const documents = documentsResult.data ?? [];
@@ -262,6 +266,7 @@ export default async function DocumentsPage({
         documentType: selected.document_type,
         documentDate: selected.document_date,
         paymentStatus: selected.payment_status,
+        renovationProjectId: selected.renovation_project_id,
         propertyId: selected.property_id,
         unitId: selected.unit_id,
         leaseId: selected.lease_id,
@@ -308,6 +313,7 @@ export default async function DocumentsPage({
       propertiesResult.error ||
       unitsResult.error ||
       leasesResult.error ||
+      renovationsResult.error ||
       categoriesResult.error ||
       extractionsResult.error ||
       linksResult.error ||
@@ -462,6 +468,8 @@ export default async function DocumentsPage({
                   Hochgeladen am {dateLabel(selected.created_at)}
                 </CardDescription>
                 <CardAction>
+                  {canReview && <DocumentMetadataForm document={selected} renovations={(renovationsResult.data ?? []).map(r=>({id:r.id,propertyId:r.property_id,name:r.name}))}/>}
+                  {canReview && <DeleteRecordButton module="belege" id={selected.id} updatedAt={selected.updated_at} name={selected.title || selected.original_file_name}/>}
                   <Button asChild size="sm" variant="outline">
                     <Link href={`/api/documents/${selected.id}/download`}>
                       <Download />
@@ -475,6 +483,7 @@ export default async function DocumentsPage({
                   <DocumentReviewForm
                     key={selectedDocument.id}
                     document={selectedDocument}
+                    renovations={(renovationsResult.data ?? []).map(r=>({id:r.id,propertyId:r.property_id,name:r.name}))}
                     properties={(propertiesResult.data ?? []).map(
                       (property) => ({
                         id: property.id,

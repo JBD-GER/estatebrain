@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import {
   CheckCircle2,
   CircleAlert,
@@ -81,7 +81,7 @@ export function RecordRentPaymentForm({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={action} className="grid gap-5" noValidate>
+        <form onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);startTransition(()=>action(data));}} className="grid gap-5" noValidate>
           {state.message ? (
             <Alert
               variant={state.status === "error" ? "destructive" : "default"}

@@ -9,6 +9,7 @@ export type ModuleField = {
   options?: Array<{ label: string; value: string }>;
   relation?: "properties" | "units" | "tenants";
   percentageRate?: boolean;
+  virtual?: boolean;
 };
 
 export type ModuleColumn = {
@@ -258,6 +259,17 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
     emptyDescription:
       "Erfasse Wohnungen und andere vermietbare Flächen deiner Immobilien.",
   },
+  mieter: {
+    slug: "mieter", title: "Mieterdaten", eyebrow: "Kontaktdaten", description: "Namen und Kontaktdaten verwalten. Neue Mieter werden zusammen mit einem Mietverhältnis angelegt.",
+    table: "tenants", readOnly: true,
+    columns: [{key:"first_name",label:"Vorname"},{key:"last_name",label:"Nachname"},{key:"company_name",label:"Firma"},{key:"email",label:"E-Mail"},{key:"phone",label:"Telefon"}],
+    fields: [
+      {name:"tenant_type",label:"Mietertyp",type:"select",required:true,options:[{label:"Privatperson",value:"person"},{label:"Unternehmen",value:"company"}]},
+      {name:"first_name",label:"Vorname",type:"text"},{name:"last_name",label:"Nachname",type:"text"},{name:"company_name",label:"Firmenname",type:"text"},
+      {name:"email",label:"E-Mail",type:"text"},{name:"phone",label:"Telefon",type:"text"},
+      {name:"street",label:"Straße",type:"text"},{name:"house_number",label:"Hausnummer",type:"text"},{name:"postal_code",label:"Postleitzahl",type:"text"},{name:"city",label:"Ort",type:"text"},
+    ],emptyTitle:"Noch keine Mieterdaten",emptyDescription:"Lege oben ein Mietverhältnis mit einem Mieter an.",
+  },
   mietverhaeltnisse: {
     slug: "mietverhaeltnisse",
     title: "Mietverhältnisse",
@@ -279,10 +291,28 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
         label: "Nebenkostenart",
         format: "status",
       },
-      { key: "deposit_cents", label: "Kaution", format: "money" },
+      { key: "ancillary_prepayment_cents", label: "Nebenkosten (mtl.)", format: "money" },
+      { key: "ends_on", label: "Mietende", format: "date" },
       { key: "status", label: "Status", format: "status" },
     ],
-    fields: [],
+    fields: [
+      { name: "lease_number", label: "Vertragsnummer", type: "text" },
+      { name: "starts_on", label: "Mietbeginn", type: "date", required: true },
+      { name: "ends_on", label: "Mietende", type: "date" },
+      { name: "due_day", label: "Zahlungstag im Monat (1–31)", type: "number", required: true },
+      { name: "cold_rent_cents", label: "Kaltmiete pro Monat", type: "money", required: true },
+      { name: "ancillary_prepayment_cents", label: "Nebenkosten pro Monat", type: "money", required: true },
+      { name: "parking_rent_cents", label: "Stellplatzmiete pro Monat", type: "money", required: true },
+      { name: "other_rent_cents", label: "Weitere Miete pro Monat", type: "money", required: true },
+      { name: "deposit_cents", label: "Kaution", type: "money", required: true },
+      { name: "ancillary_charge_type", label: "Nebenkostenart", type: "select", required: true, options: [
+        {label: "Vorauszahlung", value: "advance"}, {label: "Pauschale", value: "flat_rate"}, {label: "Keine", value: "none"},
+      ] },
+      { name: "rent_effective_from", label: "Neue Mietbeträge gültig ab (Monatsbeginn)", type: "date", required: true, virtual: true },
+      { name: "status", label: "Vertragsstatus", type: "select", required: true, options: [
+        {label: "Aktiv", value: "active"}, {label: "Gekündigt", value: "notice_given"}, {label: "Beendet", value: "ended"},
+      ] },
+    ],
     readOnly: true,
     emptyTitle: "Noch kein Mietverhältnis erfasst",
     emptyDescription:
@@ -553,6 +583,7 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       { key: "priority", label: "Priorität", format: "status" },
       { key: "estimated_cost_cents", label: "Schätzkosten", format: "money" },
       { key: "actual_cost_cents", label: "Ist-Kosten", format: "money" },
+      { key: "actual_end_date", label: "Abschlussdatum", format: "date" },
       { key: "status", label: "Status", format: "status" },
     ],
     fields: [
@@ -583,6 +614,12 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
         required: true,
       },
       { name: "planned_start_date", label: "Geplanter Start", type: "date" },
+      { name: "actual_cost_cents", label: "Gesamtkosten bei Abschluss", type: "money", required: true },
+      { name: "actual_end_date", label: "Abschlussdatum (Cashflow-Monat)", type: "date" },
+      { name: "status", label: "Status", type: "select", required: true, options: [
+        {label: "Geplant", value: "open"}, {label: "In Arbeit", value: "in_progress"},
+        {label: "Abgeschlossen", value: "done"}, {label: "Abgebrochen", value: "cancelled"},
+      ] },
       { name: "description", label: "Beschreibung", type: "textarea" },
     ],
     createLabel: "Maßnahme planen",
@@ -668,6 +705,7 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       { key: "status", label: "Status", format: "status" },
     ],
     fields: [
+      {name:"status",label:"Status",type:"select",required:true,options:[{label:"Offen",value:"open"},{label:"Wartet auf Mieter",value:"waiting_tenant"},{label:"Wartet auf Team",value:"waiting_team"},{label:"Erledigt",value:"resolved"},{label:"Geschlossen",value:"closed"}]},
       { name: "subject", label: "Betreff", type: "text", required: true },
       {
         name: "category",
@@ -680,6 +718,7 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
           { label: "Zahlung", value: "payment" },
           { label: "Dokument", value: "document" },
           { label: "Allgemein", value: "general" },
+          {label:"Kündigung",value:"termination"},{label:"Übergabe",value:"handover"},{label:"Sonstiges",value:"other"},
         ],
         required: true,
       },
@@ -689,6 +728,7 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
         type: "select",
         options: [
           { label: "Normal", value: "medium" },
+          {label:"Niedrig",value:"low"},
           { label: "Hoch", value: "high" },
           { label: "Dringend", value: "urgent" },
         ],

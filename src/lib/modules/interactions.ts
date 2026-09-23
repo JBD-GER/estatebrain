@@ -29,6 +29,8 @@ export function getModuleRowAction(
         kind: "open",
         label: "Details öffnen",
       };
+    case "sanierungen":
+      return { href: `/app/sanierungen/${safeId}`, kind: "open", label: "Sanierung und Belege öffnen" };
     case "daten-pruefen":
       return {
         href: `/app/belege?review=${safeId}`,

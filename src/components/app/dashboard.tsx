@@ -516,7 +516,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                 <Link href="/app/belege">Rechnung oder Beleg erfassen</Link>
               </Button>
               <Button asChild>
-                <Link href="/app/einnahmen">Einnahme erfassen</Link>
+                <Link href="/app/mietverhaeltnisse">Einnahme erfassen</Link>
               </Button>
             </>
           )
@@ -573,7 +573,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
                 title="Zahlungseingang Miete (mtl.)"
                 tone="positive"
                 value={euros(metrics.monthlyActualRentCents)}
-                href="/app/einnahmen"
+                href="/app/mietverhaeltnisse"
               />
               <KpiCard
                 description="Einnahmen minus liquiditätswirksame Betriebsausgaben."
@@ -675,7 +675,7 @@ export function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }) {
               icon={AlertTriangle}
               label="Miete offen"
               value={euros(metrics.openRentCents)}
-              href="/app/einnahmen"
+              href="/app/mietverhaeltnisse"
             />
             <StatTile
               detail={

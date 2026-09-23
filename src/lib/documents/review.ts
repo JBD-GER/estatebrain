@@ -90,6 +90,7 @@ export const documentReviewSchema = z
   .object({
     documentId: requiredUuid,
     propertyId: requiredUuid,
+    renovationProjectId: optionalUuid,
     unitId: optionalUuid,
     leaseId: optionalUuid,
     categoryId: requiredUuid,
@@ -211,6 +212,7 @@ export function parseDocumentReviewFormData(formData: FormData) {
   return documentReviewSchema.safeParse({
     documentId: formData.get("documentId"),
     propertyId: formData.get("propertyId"),
+    renovationProjectId: formData.get("renovationProjectId"),
     unitId: formData.get("unitId"),
     leaseId: formData.get("leaseId"),
     categoryId: formData.get("categoryId"),

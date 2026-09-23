@@ -166,6 +166,22 @@ describe("residential linear and degressive depreciation", () => {
   });
 });
 
+describe("explicit linear switch", () => {
+  it("uses 5% of the remainder for six years and then residual value / remaining life", () => {
+    const result = scenario(newBuild({ years: 40, linearSwitchAfterYears: 6, autoSwitchToLinear: false }), "degressive");
+    expect(result.switchedToLinearYear).toBe(2031);
+    expect(result.annualRows.slice(0, 6).every(row => row.method.includes("degressiv"))).toBe(true);
+    expect(result.annualRows[6].regularDepreciationCents).toBe(Math.round(result.annualRows[5].remainingBasisCents / 27));
+    expect(result.annualRows[6].regularDepreciationCents).not.toBe(3_000_000);
+    expect(result.totalDeductionCents).toBe(100_000_000);
+  });
+  it("counts a partial acquisition year as the first tax year and retains fractional useful life", () => {
+    const result = scenario(newBuild({ acquisitionDate: "2025-07-01", linearSwitchAfterYears: 6, years: 8 }), "degressive");
+    expect(result.switchedToLinearYear).toBe(2031);
+    expect(result.annualRows[6].regularDepreciationCents).toBe(Math.round(result.annualRows[5].remainingBasisCents / 27.5));
+  });
+});
+
 describe("§ 7b eligibility and rest-value accounting", () => {
   it("matches BMF example 7c including the year-five reset after all special deductions", () => {
     const result = scenario(fundedNewBuild(), "degressive_7b");

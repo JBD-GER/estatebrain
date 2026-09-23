@@ -11,6 +11,8 @@ import {
   DomainValidationError,
 } from "@/lib/domain";
 import { getModuleDefinition, type ModuleField } from "@/lib/modules";
+import { editableModules } from "@/lib/modules/lifecycle";
+import type { Json } from "@/types/database";
 
 export type CreateRecordState = {
   status: "idle" | "success" | "error";
@@ -138,8 +140,13 @@ export async function createModuleRecordAction(
     return { status: "error", message: "Unbekannter Bereich." };
   }
 
+  const recordId = formData.get("recordId");
+  const isUpdate = typeof recordId === "string" && recordId.length > 0;
+  if (isUpdate && (!z.uuid().safeParse(recordId).success || !editableModules.has(slug))) {
+    return { status: "error", message: "Dieser Datensatz kann nicht bearbeitet werden." };
+  }
   const definition = getModuleDefinition(slug);
-  if (!definition || definition.readOnly || definition.fields.length === 0) {
+  if (!definition || (!isUpdate && definition.readOnly) || definition.fields.length === 0) {
     return {
       status: "error",
       message: "In diesem Bereich ist keine direkte Anlage vorgesehen.",
@@ -307,6 +314,21 @@ export async function createModuleRecordAction(
       ];
     }
   }
+  if (slug === "mieter") {
+    if(parsedValues.tenant_type === "company" && !parsedValues.company_name) semanticErrors.company_name=["Bitte den Firmennamen angeben."];
+    if(parsedValues.tenant_type === "person" && !parsedValues.first_name && !parsedValues.last_name) semanticErrors.last_name=["Bitte einen Namen angeben."];
+    if(parsedValues.email && !z.email().safeParse(parsedValues.email).success) semanticErrors.email=["Bitte eine gültige E-Mail-Adresse angeben."];
+  }
+  if (slug === "sanierungen" && parsedValues.status === "done" && !parsedValues.actual_end_date) {
+    semanticErrors.actual_end_date = ["Bitte das Abschlussdatum angeben."];
+  }
+  if (slug === "mietverhaeltnisse") {
+    if (parsedValues.ends_on && String(parsedValues.ends_on) < String(parsedValues.starts_on)) semanticErrors.ends_on = ["Das Mietende liegt vor dem Mietbeginn."];
+    if (!Number.isInteger(parsedValues.due_day) || Number(parsedValues.due_day) < 1 || Number(parsedValues.due_day) > 31) semanticErrors.due_day = ["Bitte einen Tag von 1 bis 31 angeben."];
+    if (!String(parsedValues.rent_effective_from).endsWith("-01")) semanticErrors.rent_effective_from = ["Bitte einen Monatsbeginn auswählen."];
+    if (parsedValues.status === "ended" && !parsedValues.ends_on) semanticErrors.ends_on = ["Ein beendeter Vertrag benötigt ein Mietende."];
+    if (parsedValues.ancillary_charge_type === "none" && parsedValues.ancillary_prepayment_cents !== 0) semanticErrors.ancillary_prepayment_cents = ["Ohne Nebenkosten muss der Betrag 0 sein."];
+  }
   if (Object.keys(semanticErrors).length > 0) {
     return {
       status: "error",
@@ -315,17 +337,32 @@ export async function createModuleRecordAction(
     };
   }
 
-  const payload = {
-    ...defaultsForModule(slug),
-    ...parsed.data,
-    ...derivedValues,
-    organization_id: viewer.organizationId,
-    created_by: viewer.userId,
+  if (isUpdate && slug === "immobilien") {
+    delete derivedValues.current_market_value_cents;
+    delete derivedValues.market_value_status;
+    delete derivedValues.market_value_source;
+  }
+  const values = Object.fromEntries(Object.entries(parsedValues).map(([key, value]) => [key, value ?? (key === "land_ownership_share" ? 1 : definition.fields.find((field) => field.name === key)?.type === "money" ? 0 : null)]));
+  const payload: Record<string, unknown> = {
+    ...(isUpdate ? {} : defaultsForModule(slug)), ...values, ...derivedValues,
+    ...(isUpdate ? {} : { organization_id: viewer.organizationId, created_by: viewer.userId }),
   };
   const supabase = await createClient();
   const dynamicSupabase = supabase as unknown as SupabaseClient;
-  const { error } =
-    slug === "markt"
+  const updatedAt = formData.get("updatedAt");
+  if (isUpdate && (typeof updatedAt !== "string" || !updatedAt)) {
+    return { status: "error", message: "Bitte die Seite neu laden und erneut bearbeiten." };
+  }
+  const result = isUpdate
+    ? slug === "mietverhaeltnisse"
+      ? await dynamicSupabase.rpc("update_lease_contract", {
+          p_organization_id: viewer.organizationId, p_lease_id: recordId,
+          p_updated_at: updatedAt, p_payload: values as Json,
+        })
+      : await dynamicSupabase.from(definition.table).update(payload)
+          .eq("id", recordId).eq("organization_id", viewer.organizationId)
+          .eq("updated_at", updatedAt).select("id").maybeSingle()
+    : slug === "markt"
       ? await supabase.rpc("create_valuation", {
           p_organization_id: viewer.organizationId,
           p_property_id: String(parsedValues.property_id),
@@ -334,9 +371,9 @@ export async function createModuleRecordAction(
           p_source_type: String(parsedValues.source_type),
           p_source_name: String(parsedValues.source_name),
         })
-      : await dynamicSupabase
-          .from(definition.table)
-          .insert(payload as never);
+      : await dynamicSupabase.from(definition.table).insert(payload).select("id").single();
+  const error = result.error;
+  if (isUpdate && !error && !result.data) return { status: "error", message: "Der Eintrag wurde inzwischen geändert oder gelöscht. Bitte neu laden." };
 
   if (error) {
     return {
@@ -347,9 +384,24 @@ export async function createModuleRecordAction(
   }
 
   revalidatePath(`/app/${slug}`);
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
   return {
     status: "success",
     message: "Gespeichert. Die Auswertung wurde aktualisiert.",
   };
+}
+
+export async function deleteModuleRecordAction(input: {module: string; id: string; updatedAt?: string}): Promise<CreateRecordState> {
+  const parsed = z.object({module: z.string(), id: z.uuid(), updatedAt: z.string().optional()}).safeParse(input);
+  if (!parsed.success || (!editableModules.has(input.module) && input.module !== "belege")) return {status: "error", message: "Ungültiger Datensatz."};
+  const viewer = await requireOrganization();
+  if (!hasPermission(viewer.role, requiredPermission(input.module)) || (input.module === "belege" && !hasPermission(viewer.role, "bookkeeping.write"))) return {status: "error", message: "Deine Rolle darf diesen Eintrag nicht löschen."};
+  const supabase = await createClient();
+  const {error} = await (supabase as unknown as SupabaseClient).rpc("archive_workspace_record", {
+    p_organization_id: viewer.organizationId, p_module: input.module, p_record_id: input.id,
+    p_updated_at: input.updatedAt ?? null,
+  });
+  if (error) return {status: "error", message: error.code === "40001" ? "Der Eintrag wurde inzwischen geändert. Bitte lade ihn neu, bevor du ihn löschst." : error.message.includes("active units") ? "Zur Immobilie gehören noch Einheiten. Entferne zuerst deren Mietverhältnisse und anschließend die Einheiten." : error.message.includes("active leases") ? "Es bestehen noch zugeordnete Mietverhältnisse. Entferne zuerst diese Verträge; zugehörige Nachweise bleiben erhalten." : "Löschen nicht möglich. Bitte verknüpfte Einträge und deine Berechtigung prüfen."};
+  revalidatePath("/app", "layout");
+  return {status: "success", message: "Eintrag gelöscht. Die Auswertungen wurden aktualisiert."};
 }

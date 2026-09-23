@@ -1,5 +1,6 @@
 "use client";
 
+import { RenovationSelect, type RenovationOption } from "@/components/documents/renovation-select";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { CircleAlert, FileCheck2, Loader2, ShieldCheck, Upload } from "lucide-react";
@@ -48,12 +49,16 @@ export function DocumentUploadForm({
   properties,
   units,
   leases,
+  renovations,
   defaultPropertyId,
+  defaultRenovationId,
 }: {
   properties: PropertyOption[];
   units: UnitOption[];
   leases: LeaseOption[];
+  renovations: RenovationOption[];
   defaultPropertyId?: string;
+  defaultRenovationId?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
@@ -203,6 +208,7 @@ export function DocumentUploadForm({
               />
             </div>
 
+            <RenovationSelect propertyId={propertyId} renovations={renovations} defaultValue={defaultRenovationId}/>
             <div className="space-y-2">
               <Label htmlFor="propertyId">Immobilie</Label>
               <select

@@ -11,7 +11,6 @@ import {
   ChartNoAxesCombined,
   CheckSquare2,
   ChevronDown,
-  CircleDollarSign,
   ClipboardCheck,
   FileArchive,
   FileText,
@@ -70,7 +69,6 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
     label: "Arbeitsbereich",
     items: [
       { label: "Dashboard", href: "/app", icon: LayoutDashboard },
-      { label: "Portfolio-Übersicht", href: "/app/uebersicht", icon: ChartNoAxesCombined, module: "portfolio" },
     ],
   },
   {
@@ -110,12 +108,6 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
         href: "/app/cashflow",
         icon: BarChart3,
         module: "cashflow",
-      },
-      {
-        label: "Einnahmen",
-        href: "/app/einnahmen",
-        icon: CircleDollarSign,
-        module: "einnahmen",
       },
       {
         label: "Rechnungen & Belege",

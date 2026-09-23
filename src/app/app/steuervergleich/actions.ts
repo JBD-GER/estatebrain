@@ -63,6 +63,7 @@ export async function saveInvestmentScenarioAction(
   }
   revalidatePath("/app");
   revalidatePath("/app/steuervergleich");
+  revalidatePath("/app/steuern/szenarien");
   return { success: true, scenario };
 }
 
@@ -92,5 +93,6 @@ export async function deleteInvestmentScenarioAction(
   }
   revalidatePath("/app");
   revalidatePath("/app/steuervergleich");
+  revalidatePath("/app/steuern/szenarien");
   return { success: true, id: data.id };
 }

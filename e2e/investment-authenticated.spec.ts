@@ -11,12 +11,12 @@ test("Steuervergleich im Konto: speichern, neu laden, bearbeiten und löschen", 
   const name = `QA Steuervergleich ${Date.now()}`;
   const updatedName = `${name} aktualisiert`;
 
-  await page.goto("/login?next=%2Fapp");
+  await page.goto("/login?next=%2Fapp%2Fsteuern%2Fszenarien");
   await page.getByLabel("E-Mail-Adresse").fill(qaEmail!);
   await page.getByLabel("Passwort", { exact: true }).fill(qaPassword!);
   await page.getByRole("button", { name: "Anmelden", exact: true }).click();
-  await expect(page).toHaveURL(/\/app$/);
-  await expect(page.getByRole("heading", { name: "Dein Steuer-Dashboard." })).toBeVisible();
+  await expect(page).toHaveURL(/\/app\/steuern\/szenarien$/);
+  await expect(page.getByRole("heading", { name: "Steuerszenarien & Abschreibung." })).toBeVisible();
 
   await page.getByRole("textbox", { name: "Szenarioname" }).fill(name);
   await page.getByRole("button", { name: "Neubau", exact: true }).click();
@@ -25,9 +25,19 @@ test("Steuervergleich im Konto: speichern, neu laden, bearbeiten und löschen", 
   await page.getByRole("checkbox", { name: /Wohngebäude in EU/ }).check();
   await page.getByRole("spinbutton", { name: /Kaufpreis gesamt/ }).fill("500000");
   await page.getByRole("combobox", { name: "Abschreibungsmodell wählen" }).selectOption("degressive");
+  await expect(page.getByLabel("Wechsel zur linearen AfA")).toHaveValue("six");
+  await page.getByRole("spinbutton", { name: /Prognostizierte Kaltmiete/ }).fill("1800");
+  await page.getByLabel("Prognostizierter Mietbeginn", { exact: false }).fill("2026-08-01");
+  await page.getByRole("spinbutton", { name: /Darlehensbetrag/ }).fill("400000");
+  await page.getByRole("spinbutton", { name: /Sollzins pro Jahr/ }).fill("3.5");
+  await page.getByRole("spinbutton", { name: /Anfängliche Tilgung/ }).fill("2");
+  await page.getByRole("tab", { name: "Miete & Finanzierung" }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("1.833,33");
+  await expect(page.locator("tbody tr").first()).toContainText("9.000,00");
+  await expect(page.getByText(/Ab 2032 wechselt/)).toBeVisible();
   if (process.env.E2E_CAPTURE_DASHBOARD === "1") {
     if (testInfo.project.name === "chromium") await page.setViewportSize({ width: 1440, height: 1000 });
-    await expect(page.locator(".recharts-surface").first()).toBeVisible();
+    await expect(page.getByRole("tabpanel")).toContainText("Miete, Finanzierung & Cashflow");
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
     await page.screenshot({ path: `/tmp/estatebrain-private-dashboard-${testInfo.project.name}.png`, fullPage: true, animations: "disabled" });
     await page.screenshot({ path: `/tmp/estatebrain-private-dashboard-${testInfo.project.name}-viewport.png`, animations: "disabled" });
@@ -45,6 +55,10 @@ test("Steuervergleich im Konto: speichern, neu laden, bearbeiten und löschen", 
   await expect(page.getByRole("combobox", { name: "Abschreibungsmodell wählen" })).toHaveValue("degressive");
   await expect(page.getByRole("checkbox", { name: /Wohngebäude in EU/ })).toBeChecked();
 
+  await expect(page.getByRole("spinbutton", { name: /Prognostizierte Kaltmiete/ })).toHaveValue("1800");
+  await expect(page.getByRole("spinbutton", { name: /Darlehensbetrag/ })).toHaveValue("400000");
+  await expect(page.getByRole("spinbutton", { name: /Sollzins pro Jahr/ })).toHaveValue("3.5");
+  await expect(page.getByLabel("Wechsel zur linearen AfA")).toHaveValue("six");
   await page.getByRole("textbox", { name: "Szenarioname" }).fill(updatedName);
   await page.getByRole("spinbutton", { name: /Kaufpreis gesamt/ }).fill("550000");
   await page.getByRole("button", { name: "Szenario speichern" }).click();

@@ -19,7 +19,7 @@ Die Anwendung trennt echte Organisationsdaten konsequent von der öffentlichen, 
 - Dashboard mit Cashflow-, Rendite-, Leerstands- und Finanzierungskennzahlen
 - globale Suche sowie CSV-Exporte
 - eingeschränktes Mieterportal
-- öffentliche Portfolio-Demo unter `/demo` ohne Anmeldung und ohne echte Personen- oder Bankdaten; der Steuervergleich ist nur im angemeldeten Dashboard verfügbar
+- öffentliche Portfolio-Demo unter `/demo` ohne Anmeldung und ohne echte Personen- oder Bankdaten; der Steuervergleich liegt im angemeldeten Bereich unter Steuerübersicht → Szenarien & Abschreibung
 
 Externe Anbieter für Team-Einladungen, Open Banking, OCR, Markt- und
 Geodaten sind optionale Integrationen. Ohne Provider-Konfiguration bleiben
@@ -112,7 +112,8 @@ Variablen mit `NEXT_PUBLIC_` werden an den Browser ausgeliefert und dürfen kein
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ja | öffentlicher Supabase Publishable Key |
 | `NEXT_PUBLIC_APP_URL` | ja | kanonische App-URL für Links und Auth-Weiterleitungen |
 | `NEXT_PUBLIC_LEGAL_READY` | ja | erst nach Ergänzung und Rechtsprüfung der öffentlichen Rechtstexte auf `true` setzen; bis dahin blockiert `robots.txt` die Indexierung |
-| `SUPABASE_SECRET_KEY` | optional | privilegierte serverseitige Wartungsabläufe; niemals im Browser verwenden |
+| `SUPABASE_SECRET_KEY` | für Somantic | serverseitige Übernahme bestätigter Bewertungen; niemals im Browser verwenden |
+| `SOMANTIC_API_KEY` | für Somantic | serverseitiger Zugang zur Immobilienbewertungs-API |
 | `RESEND_API_KEY` | optional | Versand von Team-Einladungen aus der Anwendung |
 | `RESEND_FROM_EMAIL` | optional | verifizierte Absenderadresse für Einladungs-E-Mails |
 | `OPEN_BANKING_PROVIDER` | optional | Kennung des Open-Banking-Anbieters |
@@ -163,7 +164,7 @@ Organisationswert ist nie alleinige Berechtigungsgrundlage.
 
 ## Demo
 
-Die öffentliche Route `/demo` zeigt ausschließlich fiktive Portfolio-Daten. Der interaktive Steuervergleich befindet sich im geschützten Dashboard unter `/app` und speichert Szenarien nach ausdrücklichem Klick in der jeweiligen Organisation. Es gibt keinen öffentlichen Steuerrechner und keine lokale Speicherung der Szenarien. Die bisherigen Einstiege `/rechner` und `/app/steuervergleich` leiten zum Dashboard weiter.
+Die öffentliche Route `/demo` zeigt ausschließlich fiktive Portfolio-Daten. Der interaktive Steuervergleich befindet sich unter `/app/steuern/szenarien` und speichert Szenarien nach ausdrücklichem Klick in der jeweiligen Organisation. Es gibt keinen öffentlichen Steuerrechner und keine lokale Speicherung der Szenarien. Die bisherigen Einstiege `/rechner` und `/app/steuervergleich` leiten zu den Steuerszenarien weiter. `/app` zeigt das Portfolio-Dashboard.
 
 ## Steuerliches Berechnungsmodell
 

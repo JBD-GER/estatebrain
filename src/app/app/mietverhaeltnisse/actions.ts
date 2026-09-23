@@ -110,6 +110,7 @@ export async function createTenantLeaseAction(
     };
   }
 
+  await supabase.rpc("sync_automatic_rent", {p_organization_id: viewer.organizationId});
   revalidatePath("/app/mietverhaeltnisse");
   revalidatePath("/app/einheiten");
   revalidatePath("/app");
@@ -191,4 +192,19 @@ export async function recordManualRentPaymentAction(
     message:
       "Die Mietzahlung wurde verbucht und der Status der Sollstellung aktualisiert.",
   };
+}
+
+export async function correctRentPaymentAction(formData: FormData) {
+  const viewer = await requireOrganization();
+  if (!hasPermission(viewer.role, "bookkeeping.write")) return {error: "Keine Berechtigung zur Zahlungsänderung."};
+  const parsed = parseManualRentPaymentFormData(formData);
+  if (!parsed.success) return {error: "Bitte Datum und positiven Betrag prüfen."};
+  const supabase = await createClient();
+  const {error} = await supabase.rpc("correct_rent_payment", {
+    p_organization_id: viewer.organizationId, p_payment_id: parsed.data.rentClaimId,
+    p_paid_on: parsed.data.paidOn, p_amount_cents: parsed.data.amountCents,
+    p_delete: formData.get("delete")==="true",
+  });
+  if(error) return {error: "Zahlung nicht geändert. Bitte aktualisieren; Bankzuordnungen müssen in der Bankabstimmung korrigiert werden."};
+  revalidatePath("/app", "layout");return {success:true};
 }

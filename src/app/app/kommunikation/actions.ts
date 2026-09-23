@@ -31,6 +31,21 @@ const replySchema = z.object({
   internalNote: z.boolean(),
 });
 
+export async function editOwnMessageAction(input: { id: string; updatedAt: string; body: string; remove: boolean }) {
+  const viewer = await requireOrganization();
+  if (!hasPermission(viewer.role, "messages.write")) return { error: "Keine Berechtigung." };
+  const parsed = z.object({ id: z.uuid(), updatedAt: z.iso.datetime({ offset: true }), body: z.string().trim().min(1).max(20_000), remove: z.boolean() }).safeParse(input);
+  if (!parsed.success) return { error: "Bitte die Nachricht prüfen." };
+  const db = await createClient();
+  const { data, error } = await db.from("messages").update(input.remove ? { deleted_at: new Date().toISOString() } : { body: parsed.data.body, edited_at: new Date().toISOString() })
+    .eq("id", input.id).eq("organization_id", viewer.organizationId).eq("author_user_id", viewer.userId)
+    .is("author_tenant_id", null).is("deleted_at", null).eq("updated_at", input.updatedAt).select("id").maybeSingle();
+  if (error || !data) return { error: "Die Nachricht wurde inzwischen geändert oder ist nicht mehr zugänglich. Bitte neu laden." };
+  revalidatePath("/app/kommunikation");
+  revalidatePath("/portal", "layout");
+  return { success: true };
+}
+
 export async function createStaffConversationAction(formData: FormData) {
   const parsed = createConversationSchema.safeParse({
     leaseId: formData.get("leaseId"),

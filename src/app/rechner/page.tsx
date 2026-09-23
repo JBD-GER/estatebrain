@@ -1,3 +1,3 @@
 import { redirect } from "next/navigation";
 
-export default function CalculatorPage() { redirect("/app"); }
+export default function CalculatorPage() { redirect("/app/steuern/szenarien"); }

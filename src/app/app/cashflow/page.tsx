@@ -34,7 +34,7 @@ export default async function CashflowPage() {
       <PageHeader
         eyebrow="Liquidität"
         title="Cashflow"
-        description="Portfolio gesamt und je Bestandsimmobilie – mit zugeordneten Belegausgaben und Finanzierung."
+        description="Automatische Mietbuchungen, Belegausgaben und Finanzierung je Bestandsimmobilie. Sanierungskosten zählen einmalig im Abschlussmonat; zugeordnete Belege sind darin enthalten."
       />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -44,11 +44,11 @@ export default async function CashflowPage() {
             value: money(
               metrics.operatingCashflowCents + metrics.monthlyCashExpensesCents,
             ),
-            detail: "Bestätigte Zahlungen und sonstige bezahlte Einnahmen",
+            detail: "Automatisch gebuchte und bestätigte Zahlungseingänge",
             icon: WalletCards,
           },
           {
-            label: "Belegausgaben (mtl.)",
+            label: "Ausgaben inkl. Sanierungen (mtl.)",
             value: money(metrics.monthlyCashExpensesCents),
             detail: `${money(metrics.currentYearExpensesCents)} im laufenden Jahr`,
             icon: ReceiptText,

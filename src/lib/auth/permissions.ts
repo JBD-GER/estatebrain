@@ -126,6 +126,7 @@ const moduleReadPermissions = {
   immobilien: "portfolio.read",
   einheiten: "portfolio.read",
   mietverhaeltnisse: "portfolio.read",
+  mieter: "portfolio.read",
   cashflow: "bookkeeping.read",
   einnahmen: "bookkeeping.read",
   ausgaben: "bookkeeping.read",
@@ -146,6 +147,8 @@ const moduleReadPermissions = {
 } as const satisfies Record<string, Permission>;
 
 const moduleCreatePermissions = {
+  mietverhaeltnisse: "portfolio.write",
+  mieter: "portfolio.write",
   immobilien: "portfolio.write",
   einheiten: "portfolio.write",
   einnahmen: "bookkeeping.write",

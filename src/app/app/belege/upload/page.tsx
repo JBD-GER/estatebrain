@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 export default async function DocumentUploadPage({
   searchParams,
 }: {
-  searchParams: Promise<{ property?: string }>;
+  searchParams: Promise<{ property?: string; renovation?: string }>;
 }) {
   const viewer = await requireOrganization();
 
@@ -35,7 +35,7 @@ export default async function DocumentUploadPage({
   }
 
   const supabase = await createClient();
-  const [{ data: properties }, { data: units }, { data: leases }] =
+  const [{ data: properties }, { data: units }, { data: leases }, {data: renovations}] =
     await Promise.all([
       supabase
         .from("properties")
@@ -55,6 +55,7 @@ export default async function DocumentUploadPage({
         .eq("organization_id", viewer.organizationId)
         .is("archived_at", null)
         .order("starts_on", { ascending: false }),
+      supabase.from("renovation_projects").select("id,property_id,name").eq("organization_id",viewer.organizationId).is("archived_at",null).order("name"),
     ]);
 
   const requestedPropertyId = (await searchParams).property;
@@ -96,6 +97,8 @@ export default async function DocumentUploadPage({
           endsOn: lease.ends_on ? String(lease.ends_on) : null,
           status: String(lease.status),
         }))}
+        renovations={(renovations ?? []).map(r=>({id:r.id,propertyId:r.property_id,name:r.name}))}
+        defaultRenovationId={(await searchParams).renovation}
         defaultPropertyId={defaultPropertyId}
       />
     </div>

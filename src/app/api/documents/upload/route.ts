@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
   const metadata = metadataResult.data;
   const supabase = await createClient();
-  const [propertyResult, unitResult, leaseResult] = await Promise.all([
+  const [propertyResult, unitResult, leaseResult, renovationResult] = await Promise.all([
     metadata.propertyId
       ? supabase
           .from("properties")
@@ -119,13 +119,15 @@ export async function POST(request: Request) {
           .is("archived_at", null)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    metadata.renovationProjectId ? supabase.from("renovation_projects").select("id, property_id").eq("id",metadata.renovationProjectId).eq("organization_id",viewer.organizationId).is("archived_at",null).maybeSingle() : Promise.resolve({data:null,error:null}),
   ]);
 
-  if (propertyResult.error || unitResult.error || leaseResult.error) {
+  if (renovationResult.error || propertyResult.error || unitResult.error || leaseResult.error) {
     return errorResponse("Die Dokumentzuordnung konnte nicht geprüft werden.", 400);
   }
 
   const relationError = validateDocumentRelationSelection(metadata, {
+    renovation: renovationResult.data,
     property: propertyResult.data,
     unit: unitResult.data,
     lease: leaseResult.data,
@@ -147,6 +149,7 @@ export async function POST(request: Request) {
   const { error: metadataError } = await supabase.from("documents").insert({
     id: documentId,
     organization_id: viewer.organizationId,
+    renovation_project_id: metadata.renovationProjectId ?? null,
     property_id: metadata.propertyId ?? null,
     unit_id: metadata.unitId ?? null,
     lease_id: metadata.leaseId ?? null,

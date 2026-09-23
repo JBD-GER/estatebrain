@@ -35,6 +35,22 @@ export interface InvestmentTaxInput {
   qngCertified?: boolean;
   tenYearRentalConfirmed?: boolean;
   autoSwitchToLinear?: boolean;
+  /** Explicit switch after this many tax/calendar years, including a partial first year. */
+  linearSwitchAfterYears?: number;
+  cashflow?: InvestmentCashflowInput;
+}
+
+export interface InvestmentCashflowInput {
+  monthlyColdRentCents: MoneyCents;
+  rentStartsOn?: IsoDate;
+  annualRentGrowthRate: DecimalRate;
+  vacancyRate: DecimalRate;
+  /** Owner-paid, immediately deductible costs; excludes reserves and capex. */
+  monthlyOwnerCostsCents: MoneyCents;
+  loanAmountCents: MoneyCents;
+  annualInterestRate: DecimalRate;
+  initialRepaymentRate: DecimalRate;
+  loanStartsOn?: IsoDate;
 }
 
 export type InvestmentTaxScenarioId =
@@ -89,7 +105,7 @@ export interface InvestmentTaxScenario {
   switchedToLinearYear: number | null;
 }
 
-export const INVESTMENT_TAX_VERIFIED_AT = "2026-09-22";
+export const INVESTMENT_TAX_VERIFIED_AT = "2026-09-23";
 
 export const INVESTMENT_TAX_SOURCES = [
   { label: "§ 7 EStG · lineare und degressive AfA", url: "https://www.gesetze-im-internet.de/estg/__7.html" },
@@ -97,6 +113,7 @@ export const INVESTMENT_TAX_SOURCES = [
   { label: "§ 7i EStG · vermietetes Denkmal", url: "https://www.gesetze-im-internet.de/estg/__7i.html" },
   { label: "§ 10f EStG · selbst genutztes Denkmal", url: "https://www.gesetze-im-internet.de/estg/__10f.html" },
   { label: "§ 7a EStG · Restwert und Kumulationsverbot", url: "https://www.gesetze-im-internet.de/estg/__7a.html" },
+  { label: "§ 9 EStG · Schuldzinsen und Werbungskosten", url: "https://www.gesetze-im-internet.de/estg/__9.html" },
   {
     label: "BMF vom 21.05.2025 · Anwendung des § 7b",
     url: "https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Steuerarten/Einkommensteuer/2025-05-21-anwendungsschreiben-7b-estg-neu.pdf?__blob=publicationFile&v=5",
@@ -174,6 +191,30 @@ export function validateInvestmentTaxInput(input: InvestmentTaxInput): Investmen
     if (!Number.isFinite(value) || value < 0 || value > maximum) add(field, `${label}: Bitte einen Wert zwischen 0 und ${maximum * 100} % eingeben.`);
   }
   if (!Number.isInteger(input.years) || input.years < 1 || input.years > 60) add("years", "Der Betrachtungszeitraum muss zwischen 1 und 60 Jahren liegen.");
+  if (input.linearSwitchAfterYears !== undefined && (!Number.isInteger(input.linearSwitchAfterYears) || input.linearSwitchAfterYears < 4 || input.linearSwitchAfterYears > 50)) add("linearSwitchAfterYears", "Der Wechsel muss nach 4 bis 50 Steuerjahren erfolgen.");
+  if (input.cashflow) {
+    for (const [field, label, maximum] of [
+      ["monthlyColdRentCents", "Monatliche Kaltmiete", 100_000_000],
+      ["monthlyOwnerCostsCents", "Laufende Eigentümerkosten", 100_000_000],
+      ["loanAmountCents", "Darlehensbetrag", 1_000_000_000_000],
+    ] as const) {
+      const value = input.cashflow[field];
+      if (!Number.isSafeInteger(value) || value < 0 || value > maximum) add(`cashflow.${field}`, `${label}: Bitte einen gültigen, nicht negativen Betrag eingeben.`);
+    }
+    for (const [field, label, maximum] of [
+      ["annualRentGrowthRate", "Mietsteigerung", 0.1], ["vacancyRate", "Mietausfall", 1],
+      ["annualInterestRate", "Sollzins", 0.3], ["initialRepaymentRate", "Anfängliche Tilgung", 1],
+    ] as const) {
+      const value = input.cashflow[field];
+      if (!Number.isFinite(value) || value < 0 || value > maximum) add(`cashflow.${field}`, `${label}: Bitte einen Wert zwischen 0 und ${maximum * 100} % eingeben.`);
+    }
+    for (const [field, label] of [["rentStartsOn", "Mietbeginn"], ["loanStartsOn", "Darlehensbeginn"]] as const) {
+      const value = input.cashflow[field];
+      if (value && !isDate(value)) add(`cashflow.${field}`, `${label}: Bitte ein gültiges Datum eingeben.`);
+      else if (value && value < input.acquisitionDate) add(`cashflow.${field}`, `${label} darf in diesem Erwerbsmodell nicht vor der Anschaffung liegen.`);
+    }
+    if (input.cashflow.rentStartsOn && input.cashflow.rentStartsOn < input.completionDate) add("cashflow.rentStartsOn", "Der Mietbeginn darf nicht vor der Fertigstellung liegen.");
+  }
   if (!["rented", "owner_occupied"].includes(input.usage)) add("usage", "Bitte Vermietung oder Eigennutzung wählen.");
   if (!["existing", "new_build", "heritage"].includes(input.propertyKind)) add("propertyKind", "Bitte Bestand, Neubau oder Denkmal wählen.");
   for (const [field, label] of [["completionDate", "Fertigstellung"], ["acquisitionDate", "Anschaffung"]] as const) {
@@ -344,7 +385,10 @@ function buildSchedule(
         const runningBasis = inSpecialPeriod ? basis.regularBuildingBasisCents - regularCumulative : regularRemaining;
         const declining = multiplyCents(runningBasis, 0.05 * months / 12);
         const switchedAmount = multiplyCents(regularRemaining, 1 / remainingYears);
-        if (input.autoSwitchToLinear !== false && !inSpecialPeriod && switchedToLinearYear === null && specialIndex > 0 && switchedAmount > declining) {
+        const shouldSwitch = input.linearSwitchAfterYears !== undefined
+          ? specialIndex >= input.linearSwitchAfterYears
+          : input.autoSwitchToLinear !== false && switchedAmount > declining;
+        if (shouldSwitch && !inSpecialPeriod && switchedToLinearYear === null && specialIndex > 0) {
           switchedToLinearYear = year;
           fixedRestValueAnnualCents = switchedAmount;
         }

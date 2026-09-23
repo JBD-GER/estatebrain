@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -39,50 +39,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      investment_scenarios: {
-        Row: {
-          id: string
-          organization_id: string
-          name: string
-          input: Json
-          selected_method: string
-          schema_version: number
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          organization_id: string
-          name: string
-          input: Json
-          selected_method?: string
-          schema_version?: number
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          organization_id?: string
-          name?: string
-          input?: Json
-          selected_method?: string
-          schema_version?: number
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "investment_scenarios_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       audit_logs: {
         Row: {
           action: string
@@ -1032,6 +988,7 @@ export type Database = {
           original_file_name: string
           payment_status: Database["public"]["Enums"]["payment_status"] | null
           property_id: string | null
+          renovation_project_id: string | null
           retention_until: string | null
           review_status: Database["public"]["Enums"]["document_review_status"]
           sha256: string | null
@@ -1057,6 +1014,7 @@ export type Database = {
           original_file_name: string
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
           property_id?: string | null
+          renovation_project_id?: string | null
           retention_until?: string | null
           review_status?: Database["public"]["Enums"]["document_review_status"]
           sha256?: string | null
@@ -1082,6 +1040,7 @@ export type Database = {
           original_file_name?: string
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
           property_id?: string | null
+          renovation_project_id?: string | null
           retention_until?: string | null
           review_status?: Database["public"]["Enums"]["document_review_status"]
           sha256?: string | null
@@ -1113,6 +1072,13 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_renovation_project_id_fkey"
+            columns: ["renovation_project_id"]
+            isOneToOne: false
+            referencedRelation: "renovation_projects"
             referencedColumns: ["id"]
           },
           {
@@ -1218,6 +1184,7 @@ export type Database = {
           organization_id: string
           payment_status: Database["public"]["Enums"]["payment_status"]
           property_id: string
+          renovation_project_id: string | null
           service_date: string | null
           tax_amount_cents: number | null
           tax_year: number | null
@@ -1248,6 +1215,7 @@ export type Database = {
           organization_id: string
           payment_status?: Database["public"]["Enums"]["payment_status"]
           property_id: string
+          renovation_project_id?: string | null
           service_date?: string | null
           tax_amount_cents?: number | null
           tax_year?: number | null
@@ -1278,6 +1246,7 @@ export type Database = {
           organization_id?: string
           payment_status?: Database["public"]["Enums"]["payment_status"]
           property_id?: string
+          renovation_project_id?: string | null
           service_date?: string | null
           tax_amount_cents?: number | null
           tax_year?: number | null
@@ -1311,6 +1280,13 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_entries_renovation_project_id_fkey"
+            columns: ["renovation_project_id"]
+            isOneToOne: false
+            referencedRelation: "renovation_projects"
             referencedColumns: ["id"]
           },
           {
@@ -1573,6 +1549,50 @@ export type Database = {
           },
         ]
       }
+      investment_scenarios: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          input: Json
+          name: string
+          organization_id: string
+          schema_version: number
+          selected_method: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          input: Json
+          name: string
+          organization_id: string
+          schema_version?: number
+          selected_method?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          input?: Json
+          name?: string
+          organization_id?: string
+          schema_version?: number
+          selected_method?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investment_scenarios_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitations: {
         Row: {
           accepted_at: string | null
@@ -1708,6 +1728,7 @@ export type Database = {
           ancillary_charge_type: string
           ancillary_prepayment_cents: number
           archived_at: string | null
+          automatic_rent_from: string | null
           cold_rent_cents: number
           created_at: string
           created_by: string | null
@@ -1731,6 +1752,7 @@ export type Database = {
           ancillary_charge_type?: string
           ancillary_prepayment_cents?: number
           archived_at?: string | null
+          automatic_rent_from?: string | null
           cold_rent_cents: number
           created_at?: string
           created_by?: string | null
@@ -1754,6 +1776,7 @@ export type Database = {
           ancillary_charge_type?: string
           ancillary_prepayment_cents?: number
           archived_at?: string | null
+          automatic_rent_from?: string | null
           cold_rent_cents?: number
           created_at?: string
           created_by?: string | null
@@ -2750,6 +2773,7 @@ export type Database = {
           total_area_sqm: number | null
           unit_count: number | null
           updated_at: string
+          valuation_details: Json
         }
         Insert: {
           acquisition_costs_cents?: number
@@ -2800,6 +2824,7 @@ export type Database = {
           total_area_sqm?: number | null
           unit_count?: number | null
           updated_at?: string
+          valuation_details?: Json
         }
         Update: {
           acquisition_costs_cents?: number
@@ -2850,6 +2875,7 @@ export type Database = {
           total_area_sqm?: number | null
           unit_count?: number | null
           updated_at?: string
+          valuation_details?: Json
         }
         Relationships: [
           {
@@ -3108,6 +3134,7 @@ export type Database = {
         Row: {
           amount_cents: number | null
           ancillary_cents: number
+          automatic_payment_suppressed: boolean
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
@@ -3130,6 +3157,7 @@ export type Database = {
         Insert: {
           amount_cents?: number | null
           ancillary_cents?: number
+          automatic_payment_suppressed?: boolean
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -3152,6 +3180,7 @@ export type Database = {
         Update: {
           amount_cents?: number | null
           ancillary_cents?: number
+          automatic_payment_suppressed?: boolean
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -3203,6 +3232,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          is_automatic: boolean
           notes: string | null
           organization_id: string
           paid_on: string
@@ -3216,6 +3246,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_automatic?: boolean
           notes?: string | null
           organization_id: string
           paid_on: string
@@ -3229,6 +3260,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_automatic?: boolean
           notes?: string | null
           organization_id?: string
           paid_on?: string
@@ -3331,6 +3363,73 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      somantic_valuation_reports: {
+        Row: {
+          completed_at: string | null
+          error_message: string | null
+          id: string
+          input: Json
+          organization_id: string
+          property_id: string
+          requested_at: string
+          requested_by: string | null
+          response: Json | null
+          status: string
+          valuation_id: string | null
+          valuation_year: number
+        }
+        Insert: {
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          input: Json
+          organization_id: string
+          property_id: string
+          requested_at?: string
+          requested_by?: string | null
+          response?: Json | null
+          status: string
+          valuation_id?: string | null
+          valuation_year: number
+        }
+        Update: {
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          input?: Json
+          organization_id?: string
+          property_id?: string
+          requested_at?: string
+          requested_by?: string | null
+          response?: Json | null
+          status?: string
+          valuation_id?: string | null
+          valuation_year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "somantic_valuation_reports_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "somantic_valuation_reports_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "somantic_valuation_reports_valuation_id_fkey"
+            columns: ["valuation_id"]
+            isOneToOne: false
+            referencedRelation: "valuations"
             referencedColumns: ["id"]
           },
         ]
@@ -4181,6 +4280,15 @@ export type Database = {
     }
     Functions: {
       accept_invitation: { Args: { raw_token: string }; Returns: string }
+      archive_workspace_record: {
+        Args: {
+          p_module: string
+          p_organization_id: string
+          p_record_id: string
+          p_updated_at?: string
+        }
+        Returns: string
+      }
       cancel_organization_deletion: {
         Args: { p_organization_id: string; p_request_id: string }
         Returns: boolean
@@ -4196,6 +4304,16 @@ export type Database = {
       }
       confirm_transaction_match: {
         Args: { p_match_id: string }
+        Returns: string
+      }
+      correct_rent_payment: {
+        Args: {
+          p_amount_cents: number
+          p_delete?: boolean
+          p_organization_id: string
+          p_paid_on: string
+          p_payment_id: string
+        }
         Returns: string
       }
       create_organization_with_owner: {
@@ -4258,6 +4376,10 @@ export type Database = {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: string
       }
+      finish_somantic_valuation: {
+        Args: { p_report_id: string; p_response: Json }
+        Returns: string
+      }
       generate_monthly_rent_claims: {
         Args: { p_organization_id: string; p_period: string }
         Returns: number
@@ -4307,6 +4429,14 @@ export type Database = {
         Args: { p_organization_id: string; p_organization_name: string }
         Returns: string
       }
+      reserve_somantic_valuation: {
+        Args: {
+          p_input: Json
+          p_organization_id: string
+          p_property_id: string
+        }
+        Returns: string
+      }
       resume_portfolio_onboarding: {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: string
@@ -4327,8 +4457,38 @@ export type Database = {
         }
         Returns: string
       }
+      review_document_with_renovation: {
+        Args: {
+          p_document_id: string
+          p_organization_id: string
+          p_payload: Json
+        }
+        Returns: string
+      }
       seed_demo_organization: {
         Args: { p_organization_id: string }
+        Returns: string
+      }
+      sync_automatic_rent: {
+        Args: { p_organization_id: string }
+        Returns: number
+      }
+      update_document_metadata: {
+        Args: {
+          p_document_id: string
+          p_organization_id: string
+          p_payload: Json
+          p_updated_at: string
+        }
+        Returns: string
+      }
+      update_lease_contract: {
+        Args: {
+          p_lease_id: string
+          p_organization_id: string
+          p_payload: Json
+          p_updated_at: string
+        }
         Returns: string
       }
     }
@@ -4371,12 +4531,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4400,11 +4560,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4425,11 +4585,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4450,11 +4610,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4467,11 +4627,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

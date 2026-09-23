@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function InvestmentComparisonPage() {
-  redirect("/app");
+  redirect("/app/steuern/szenarien");
 }

@@ -6,12 +6,23 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { parseDocumentReviewFormData } from "@/lib/documents/review";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database";
+import { z } from "zod";
 
 export type DocumentReviewState = {
   status: "idle" | "success" | "error";
   message?: string;
   errors?: Record<string, string[] | undefined>;
 };
+
+export async function updateDocumentMetadataAction(formData:FormData){
+  const viewer=await requireOrganization();
+  if(!hasPermission(viewer.role,"bookkeeping.write"))return {error:"Keine Berechtigung zur Dokumentänderung."};
+  const parsed=z.object({id:z.uuid(),updatedAt:z.string().min(1),title:z.string().trim().max(160),documentDate:z.union([z.iso.date(),z.literal("")]),renovationProjectId:z.union([z.uuid(),z.literal("")])}).safeParse(Object.fromEntries(formData));
+  if(!parsed.success)return {error:"Bitte Titel, Datum und Zuordnung prüfen."};
+  const db=await createClient();const {error}=await db.rpc("update_document_metadata",{p_organization_id:viewer.organizationId,p_document_id:parsed.data.id,p_updated_at:parsed.data.updatedAt,p_payload:parsed.data});
+  if(error)return {error:"Das Dokument wurde inzwischen geändert oder die Zuordnung ist ungültig. Bitte neu laden."};
+  revalidatePath("/app","layout");return {success:true};
+}
 
 export async function reviewDocumentAction(
   _previousState: DocumentReviewState,
@@ -41,7 +52,7 @@ export async function reviewDocumentAction(
   const { documentId, ...payload } = parsed.data;
   const supabase = await createClient();
   const { data: expenseId, error } = await supabase.rpc(
-    "review_document_expense",
+    "review_document_with_renovation",
     {
       p_organization_id: viewer.organizationId,
       p_document_id: documentId,
@@ -57,6 +68,7 @@ export async function reviewDocumentAction(
     };
   }
 
+  revalidatePath("/app", "layout");
   revalidatePath("/app/belege");
   revalidatePath("/app/ausgaben");
   revalidatePath("/app");

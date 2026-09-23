@@ -22,6 +22,7 @@ const optionalUuid = z.preprocess(
 export const documentUploadMetadataSchema = z
   .object({
     propertyId: optionalUuid,
+    renovationProjectId: optionalUuid,
     unitId: optionalUuid,
     leaseId: optionalUuid,
     documentType: z.enum([
@@ -90,6 +91,7 @@ export type DocumentUploadMetadata = z.output<
 export function parseDocumentUploadMetadata(formData: FormData) {
   return documentUploadMetadataSchema.safeParse({
     propertyId: formData.get("propertyId"),
+    renovationProjectId: formData.get("renovationProjectId"),
     unitId: formData.get("unitId"),
     leaseId: formData.get("leaseId"),
     documentType: formData.get("documentType"),

@@ -41,7 +41,7 @@ Provider- und Wartungsvariablen werden nur gesetzt, wenn die Integration aktiv i
 
 Secrets gehören weder in Git noch in Build-Logs. Werte werden in Vercel und Supabase direkt gepflegt und regelmäßig rotiert.
 
-Für den Steuervergleich sind keine zusätzlichen Secrets notwendig. Er ist ausschließlich im angemeldeten Dashboard unter `/app` verfügbar. Gespeicherte Vergleiche verwenden den vorhandenen Supabase-Client mit Benutzersitzung und RLS. Eine lokale `.env`-Datei ist für Vercel-Deployments nicht erforderlich; die drei Pflichtvariablen werden im jeweiligen Vercel-Environment hinterlegt. Für lokale Anmeldung werden dieselben öffentlichen Konfigurationswerte lokal benötigt, niemals der Secret Key. Die Portfolio-Übersicht bleibt unter `/app/uebersicht` erreichbar. Öffentliche Altlinks zu `/rechner` führen zum geschützten Dashboard.
+Für den Steuervergleich sind keine zusätzlichen Secrets notwendig. Er ist ausschließlich unter `/app/steuern/szenarien` verfügbar. Gespeicherte Vergleiche verwenden den vorhandenen Supabase-Client mit Benutzersitzung und RLS. Eine lokale `.env`-Datei ist für Vercel-Deployments nicht erforderlich; die drei Pflichtvariablen werden im jeweiligen Vercel-Environment hinterlegt. Für lokale Anmeldung werden dieselben öffentlichen Konfigurationswerte lokal benötigt, niemals der Secret Key. Die Portfolio-Übersicht bleibt unter `/app/uebersicht` erreichbar. Öffentliche Altlinks zu `/rechner` führen zu den geschützten Steuerszenarien.
 
 ## Supabase-Migrationen
 
@@ -149,3 +149,14 @@ Bei reinem Anwendungscode kann auf das letzte bekannte gute Vercel-Deployment zu
 - Datenbankgröße, Indizes und langsame Queries überwachen
 - Provider-Secrets und Verschlüsselungsschlüssel nach internem Rotationsplan erneuern
 - rechtliche Vorlagen und steuerliche Hinweise fachlich aktuell halten
+
+
+## Somantic und laufende Dateneingabe (23.09.2026)
+
+- Produktion benötigt `SOMANTIC_API_KEY` und `SUPABASE_SECRET_KEY` ausschließlich serverseitig. Bewertungen laufen über `POST https://www.somantic.net/api/estimate`; die Feldregeln entsprechen der [Anbieterdokumentation](https://www.somantic.net/developers/docs).
+- `somantic_valuation_reports` reserviert unter einer Immobiliensperre genau einen Abruf pro Immobilie und Kalenderjahr in Europe/Berlin. Erfolgreiche und datenarme Antworten verbrauchen das Jahreskontingent. Erneutes Öffnen/Exportieren eines Berichts erzeugt keinen API-Aufruf. Ein manueller Bewertungsdatensatz ist von dieser Provider-Quote getrennt.
+- Ein bekannter Ablehnungsstatus erlaubt nach einer Minute einen erneuten Versuch. Bei Timeout, Netzfehler oder unklarem Anbieterfehler bleibt der Abruf gesperrt (`uncertain` oder `pending`). Somantic dokumentiert keinen Idempotenzschlüssel und keine Statusabfrage: niemals ungeprüft entsperren oder erneut abrufen. Mit gespeicherter Antwort kann der Service-Only-RPC `finish_somantic_valuation` idempotent die Übernahme abschließen. Ohne Antwort zuerst den Verarbeitungsstand beim Anbieter klären.
+- Neue Mietverträge erzeugen monatliche Forderungen und ab Fälligkeit automatisch als eingegangen angenommene Zahlungen. Der tägliche Cron `estatebrain-monthly-rents` holt auch versäumte Monate nach. Für Altverträge beginnt die Automatik im Migrationsmonat. Korrigierte/gelöschte Zahlungseingänge werden nicht wieder automatisch ersetzt. Bankzuordnungen werden im Bankabgleich korrigiert.
+- Sanierungskosten werden als eingegebener Gesamtbetrag im Abschlussmonat berücksichtigt. Zugeordnete Belege werden in dieser Cashflow-Berechnung nicht zusätzlich addiert. Allgemeine Ausgaben bleiben an ihrem eigenen Buchungsdatum. Diese Verschiebung ist keine steuerliche Qualifizierung der Sanierung.
+- Löschen entfernt Stammdaten aus den aktiven Listen; abhängige aktive Einheiten/Mietverhältnisse müssen zuvor entfernt werden. Beleglöschung archiviert die verknüpfte Ausgabe. Nachweise bleiben erhalten. Änderungszeitpunkte schützen vor dem Überschreiben zwischenzeitlich geänderter Datensätze.
+- SQL-Integrationstest ohne bleibende Testdaten: `npx supabase db query --linked --file supabase/tests/lifecycle_somantic.sql`.

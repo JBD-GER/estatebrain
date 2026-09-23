@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import {
   Building2,
   CheckCircle2,
@@ -104,7 +104,7 @@ export function CreateTenantLeaseForm({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={action} className="grid gap-6" noValidate>
+        <form onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);startTransition(()=>action(data));}} className="grid gap-6" noValidate>
           {state.message ? (
             <Alert
               variant={state.status === "error" ? "destructive" : "default"}
