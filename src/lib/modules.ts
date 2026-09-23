@@ -635,6 +635,7 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       "Marktwerte und Vergleichsmieten mit Quelle, Stand und Unsicherheit dokumentieren.",
     table: "valuations",
     columns: [
+      { key: "property_name", label: "Immobilie" },
       { key: "valued_on", label: "Stand", format: "date" },
       { key: "market_value_cents", label: "Marktwert", format: "money" },
       { key: "source_type", label: "Quellentyp", format: "status" },

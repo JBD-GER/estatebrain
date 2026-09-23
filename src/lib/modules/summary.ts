@@ -1,5 +1,7 @@
 import { documentStatusRequiresAttention } from "@/lib/documents/status";
 
+export type ModuleSummaryMetric = { label: string; value: string; hint: string };
+
 const generalAttentionStatuses = new Set(["open", "urgent", "overdue"]);
 
 export function moduleRowRequiresAttention(

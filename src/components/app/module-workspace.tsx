@@ -62,7 +62,7 @@ import {
   getModuleRowAction,
   type ModuleRowAction,
 } from "@/lib/modules/interactions";
-import { moduleRowRequiresAttention } from "@/lib/modules/summary";
+import { moduleRowRequiresAttention, type ModuleSummaryMetric } from "@/lib/modules/summary";
 import { propertyTypeLabel } from "@/lib/domain/property";
 
 import { DeleteRecordButton } from "@/components/app/delete-record-button";
@@ -412,9 +412,11 @@ export function CreateRecordDialog({
 function ModuleSummary({
   definition,
   rows,
+  summaryMetrics,
 }: {
   definition: ModuleDefinition;
   rows: ModuleRow[];
+  summaryMetrics?: ModuleSummaryMetric[];
 }) {
   const moneyKey =
     definition.columns.find((column) => column.format === "money")?.key ?? null;
@@ -427,7 +429,7 @@ function ModuleSummary({
     return !Number.isNaN(date.valueOf());
   }).length;
 
-  const metrics = [
+  const metrics = summaryMetrics ?? [
     { label: "Datensätze", value: number.format(rows.length), hint: "Aktuelle Auswahl" },
     {
       label: moneyKey ? "Gesamtsumme" : "Aktualisiert",
@@ -541,6 +543,7 @@ export function ModuleWorkspace({
   initiallyOpenCreate,
   afterDeleteHref,
   headingLevel = 1,
+  summaryMetrics,
 }: {
   definition: ModuleDefinition;
   rows: ModuleRow[];
@@ -555,6 +558,7 @@ export function ModuleWorkspace({
   initiallyOpenCreate?: boolean;
   afterDeleteHref?: string;
   headingLevel?: 1 | 2;
+  summaryMetrics?: ModuleSummaryMetric[];
 }) {
   const [query, setQuery] = useState("");
   const filteredRows = useMemo(() => {
@@ -653,7 +657,7 @@ export function ModuleWorkspace({
       ) : null}
       {definition.slug === "integrationen" ? <IntegrationCards /> : null}
       {definition.slug === "bank" ? <BankDemoCard /> : null}
-      <ModuleSummary definition={definition} rows={rows} />
+      <ModuleSummary definition={definition} rows={rows} summaryMetrics={summaryMetrics} />
 
       {error ? (
         <Alert variant="destructive" className="mb-5">

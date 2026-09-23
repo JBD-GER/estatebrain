@@ -3,6 +3,7 @@ import { requireOrganization } from "@/lib/auth/dal";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { valuationDefaults } from "@/lib/valuations/somantic";
+import { valuationSummaryMetrics } from "@/lib/valuations/summary";
 import { ValuationDialog } from "@/components/valuations/valuation-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getModulePageData } from "@/lib/data/modules";
@@ -17,6 +18,8 @@ export default async function MarketPage({searchParams}:{searchParams:Promise<{p
     getModulePageData("markt"),
     supabase.from("units").select("property_id,area_sqm,rooms,unit_type").eq("organization_id",viewer.organizationId).is("archived_at",null),
   ]);
+  const selectedProperties = properties.error ? null : (properties.data ?? []).filter(p=>!query.property || p.id===query.property);
+  const historyRows = (history?.rows ?? []).filter(r=>!query.property || r.property_id===query.property);
   return <div className="space-y-6"><div><p className="text-sm text-muted-foreground">Somantic · Immobilienbewertung</p><h1 className="text-3xl font-semibold">Immobilienbewertung</h1><p className="mt-2 text-muted-foreground">Kaufpreis, mögliche Kaltmiete und Preisspannen auf Basis vergleichbarer Wohnimmobilien. Bewertungen können bei Bedarf erneut abgerufen werden.</p></div>
     {(properties.error || reports.error) ? <p role="alert">Die Bewertungsdaten konnten nicht geladen werden. Bitte erneut laden.</p> : <div className="grid gap-4 lg:grid-cols-2">{properties.data?.filter(p=>!query.property || p.id===query.property).map(p=>{
       const propertyReports=reports.data?.filter(r=>r.property_id===p.id) ?? []; const current=propertyReports[0]; const locked=propertyReports.some(r=>["pending","uncertain"].includes(r.status));
@@ -27,6 +30,6 @@ export default async function MarketPage({searchParams}:{searchParams:Promise<{p
         {propertyReports.filter(r=>["succeeded","insufficient","uncertain"].includes(r.status)).map(r=><Link className="block text-sm underline" key={r.id} href={`/app/markt/${r.id}`}>Bewertungsbericht vom {new Date(r.requested_at).toLocaleString("de-DE",{timeZone:"Europe/Berlin"})} öffnen</Link>)}
       </CardContent></Card>;
     })}{!properties.data?.length && <p>Lege zuerst eine Immobilie an, um sie bewerten zu lassen.</p>}</div>}
-    {history && <ModuleWorkspace headingLevel={2} {...history} definition={{...history.definition,title:"Bewertungshistorie",description:"Gespeicherte Marktwerte und ergänzende manuelle Einschätzungen."}}/>}
+    {history && <ModuleWorkspace headingLevel={2} {...history} rows={historyRows} summaryMetrics={valuationSummaryMetrics(selectedProperties,historyRows.length)} initialFieldValues={query.property ? {property_id:query.property} : undefined} definition={{...history.definition,title:"Bewertungshistorie",description:"Der aktuelle Marktwert zählt je Immobilie einmal. Frühere Bewertungen bleiben zum Vergleich erhalten und werden nicht addiert."}}/>}
   </div>;
 }
