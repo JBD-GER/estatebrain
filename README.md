@@ -6,7 +6,7 @@ Die Anwendung trennt echte Organisationsdaten konsequent von der öffentlichen, 
 
 ## Funktionsumfang
 
-- Steuer-Dashboard direkt nach der Anmeldung unter `/app`: bis zu drei Szenarien, Live-Berechnung, Diagramm, Jahresplan, Rechenweg und CSV-Export
+- Steuerszenarien unter `/app/steuern/szenarien`: bis zu drei Szenarien, Live-Berechnung, Diagramm, Jahresplan, Rechenweg und CSV-Export
 - lineare Gebäude-AfA (2 / 2,5 / 3 %), begünstigte degressive AfA (5 %), optional § 7b sowie Denkmalregeln nach § 7i und § 10f
 - Prüfung von Fördervoraussetzungen, monatsgenauer AfA-Beginn und getrennte Bemessungsgrundlagen für Grundstück, Gebäude und Denkmalmaßnahmen
 - Szenarien im Dashboard organisationsbezogen in Supabase speichern; bestehende Portfolio-Übersicht unter `/app/uebersicht`
@@ -56,7 +56,7 @@ Die Supabase CLI ist als Entwicklungsabhängigkeit enthalten und wird über `npx
 ## Lokale Einrichtung
 
 Die Landingpage und die fiktive Portfolio-Demo funktionieren auch ohne lokale
-Supabase-Konfiguration. Für das Steuer-Dashboard und die Anmeldung werden die unten
+Supabase-Konfiguration. Für die Steuerszenarien und die Anmeldung werden die unten
 genannten Variablen benötigt. Bei Vercel können diese direkt im Projekt für
 Preview und Production hinterlegt werden; eine lokale `.env.local` ist für den
 Remote-Build nicht erforderlich. Für dieses Update werden keine neuen Secrets
