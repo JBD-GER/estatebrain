@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { valuationResponseSchema, valuationInputSchema, valuationAvailability, valuationFilterLabel, featureLabels, propertyTypes } from "@/lib/valuations/somantic";
 import { PrintReportButton } from "@/components/valuations/print-report-button";
 import { ValuationDialog } from "@/components/valuations/valuation-dialog";
+import { DeleteRecordButton } from "@/components/app/delete-record-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -29,7 +30,7 @@ export default async function ValuationReportPage({ params }: { params: Promise<
   const canRepeat = hasPermission(viewer.role, "portfolio.write") && property?.country_code === "DE" && !property.archived_at && !activeResult.error && !activeResult.data?.length;
 
   return <article className="mx-auto max-w-5xl space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/app/markt" className="text-sm underline print:hidden">Zurück zu Bewertungen</Link><PrintReportButton /></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/app/markt" className="text-sm underline print:hidden">Zurück zu Bewertungen</Link><div className="flex items-center gap-2 print:hidden">{hasPermission(viewer.role,"portfolio.write") && !["pending","uncertain"].includes(report.status) && <DeleteRecordButton module="markt" id={report.id} valuationReport name="Bewertungsbericht" afterDeleteHref="/app/markt"/>}<PrintReportButton /></div></div>
     <header>
       <p className="text-sm text-muted-foreground">EstateBrain · Somantic · {report.valuation_year}</p>
       <h1 className="text-3xl font-semibold">Bewertungsbericht: {property?.name ?? "Immobilie"}</h1>

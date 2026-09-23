@@ -8,6 +8,7 @@ import { ValuationDialog } from "@/components/valuations/valuation-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getModulePageData } from "@/lib/data/modules";
 import { ModuleWorkspace } from "@/components/app/module-workspace";
+import { DeleteRecordButton } from "@/components/app/delete-record-button";
 
 export const maxDuration = 120;
 export default async function MarketPage({searchParams}:{searchParams:Promise<{property?:string}>}) {
@@ -27,7 +28,7 @@ export default async function MarketPage({searchParams}:{searchParams:Promise<{p
         {locked ? <p>Eine Anfrage wurde bereits gestartet. Bitte den laufenden Abruf abwarten; bei unbestätigtem Status den Support kontaktieren.</p> : hasPermission(viewer.role,"portfolio.write") && <ValuationDialog propertyId={p.id} name={p.name} defaults={{...valuationDefaults(p,(units.data ?? []).filter(u=>u.property_id===p.id)),comparison_scope:"broader"}} disabled={p.country_code!=="DE"}/>}
         {p.country_code!=="DE" && <p className="text-sm">Somantic unterstützt nur Immobilien in Deutschland.</p>}
         {current?.error_message && <p className="text-sm text-destructive">{current.error_message}</p>}
-        {propertyReports.filter(r=>["succeeded","insufficient","uncertain"].includes(r.status)).map(r=><Link className="block text-sm underline" key={r.id} href={`/app/markt/${r.id}`}>Bewertungsbericht vom {new Date(r.requested_at).toLocaleString("de-DE",{timeZone:"Europe/Berlin"})} öffnen</Link>)}
+        {propertyReports.filter(r=>["succeeded","insufficient","uncertain"].includes(r.status)).map(r=><div key={r.id} className="flex flex-wrap items-center justify-between gap-2"><Link className="text-sm underline" href={`/app/markt/${r.id}`}>Bewertungsbericht vom {new Date(r.requested_at).toLocaleString("de-DE",{timeZone:"Europe/Berlin"})} öffnen</Link>{hasPermission(viewer.role,"portfolio.write") && r.status!=="uncertain" && <DeleteRecordButton module="markt" id={r.id} valuationReport name={`Bewertungsbericht für ${p.name}`}/>}</div>)}
       </CardContent></Card>;
     })}{!properties.data?.length && <p>Lege zuerst eine Immobilie an, um sie bewerten zu lassen.</p>}</div>}
     {history && <ModuleWorkspace headingLevel={2} {...history} rows={historyRows} summaryMetrics={valuationSummaryMetrics(selectedProperties,historyRows.length)} initialFieldValues={query.property ? {property_id:query.property} : undefined} definition={{...history.definition,title:"Bewertungshistorie",description:"Der aktuelle Marktwert zählt je Immobilie einmal. Frühere Bewertungen bleiben zum Vergleich erhalten und werden nicht addiert."}}/>}

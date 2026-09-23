@@ -391,17 +391,20 @@ export async function createModuleRecordAction(
   };
 }
 
-export async function deleteModuleRecordAction(input: {module: string; id: string; updatedAt?: string}): Promise<CreateRecordState> {
-  const parsed = z.object({module: z.string(), id: z.uuid(), updatedAt: z.string().optional()}).safeParse(input);
-  if (!parsed.success || (!editableModules.has(input.module) && input.module !== "belege")) return {status: "error", message: "Ungültiger Datensatz."};
+export async function deleteModuleRecordAction(input: {module: string; id: string; updatedAt?: string; valuationReport?: boolean}): Promise<CreateRecordState> {
+  const parsed = z.object({module: z.string(), id: z.uuid(), updatedAt: z.string().optional(), valuationReport: z.boolean().optional()}).safeParse(input);
+  if (!parsed.success || (!editableModules.has(input.module) && input.module !== "belege") || (input.valuationReport && input.module !== "markt")) return {status: "error", message: "Ungültiger Datensatz."};
   const viewer = await requireOrganization();
   if (!hasPermission(viewer.role, requiredPermission(input.module)) || (input.module === "belege" && !hasPermission(viewer.role, "bookkeeping.write"))) return {status: "error", message: "Deine Rolle darf diesen Eintrag nicht löschen."};
   const supabase = await createClient();
-  const {error} = await (supabase as unknown as SupabaseClient).rpc("archive_workspace_record", {
+  const {error} = input.module === "markt" ? await (supabase as unknown as SupabaseClient).rpc("delete_property_valuation", {
+    p_organization_id: viewer.organizationId, p_valuation_id: input.valuationReport ? null : input.id,
+    p_report_id: input.valuationReport ? input.id : null, p_updated_at: input.updatedAt || null,
+  }) : await (supabase as unknown as SupabaseClient).rpc("archive_workspace_record", {
     p_organization_id: viewer.organizationId, p_module: input.module, p_record_id: input.id,
     p_updated_at: input.updatedAt ?? null,
   });
-  if (error) return {status: "error", message: error.code === "40001" ? "Der Eintrag wurde inzwischen geändert. Bitte lade ihn neu, bevor du ihn löschst." : error.message.includes("active units") ? "Zur Immobilie gehören noch Einheiten. Entferne zuerst deren Mietverhältnisse und anschließend die Einheiten." : error.message.includes("active leases") ? "Es bestehen noch zugeordnete Mietverhältnisse. Entferne zuerst diese Verträge; zugehörige Nachweise bleiben erhalten." : "Löschen nicht möglich. Bitte verknüpfte Einträge und deine Berechtigung prüfen."};
+  if (error) return {status: "error", message: error.code === "55000" ? "Diese Bewertungsanfrage läuft noch oder ist unbestätigt. Bitte zuerst den Abschluss abwarten oder den Status prüfen lassen." : error.code === "40001" ? "Der Eintrag wurde inzwischen geändert. Bitte lade ihn neu, bevor du ihn löschst." : error.message.includes("active units") ? "Zur Immobilie gehören noch Einheiten. Entferne zuerst deren Mietverhältnisse und anschließend die Einheiten." : error.message.includes("active leases") ? "Es bestehen noch zugeordnete Mietverhältnisse. Entferne zuerst diese Verträge; zugehörige Nachweise bleiben erhalten." : "Löschen nicht möglich. Bitte verknüpfte Einträge und deine Berechtigung prüfen."};
   revalidatePath("/app", "layout");
   return {status: "success", message: "Eintrag gelöscht. Die Auswertungen wurden aktualisiert."};
 }

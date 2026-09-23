@@ -4372,6 +4372,15 @@ export type Database = {
         }
         Returns: string
       }
+      delete_property_valuation: {
+        Args: {
+          p_organization_id: string
+          p_report_id?: string
+          p_updated_at?: string
+          p_valuation_id?: string
+        }
+        Returns: undefined
+      }
       finalize_onboarding_v2: {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: string

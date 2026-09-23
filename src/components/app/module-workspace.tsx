@@ -746,8 +746,8 @@ export function ModuleWorkspace({
                         {hasRowActions ? (
                           <TableCell className="whitespace-nowrap">
                             {rowAction ? <RowActionLink action={rowAction} /> : null}
-                            {canEdit && row.id && row.source_name !== "Somantic" ? <>
-                              <CreateRecordDialog key={`${row.id}:${text(row.updated_at)}`} definition={definition} relations={relations} relationErrors={relationErrors} record={row} />
+                            {canEdit && row.id ? <>
+                              {row.source_name !== "Somantic" && <CreateRecordDialog key={`${row.id}:${text(row.updated_at)}`} definition={definition} relations={relations} relationErrors={relationErrors} record={row} />}
                               <DeleteRecordButton afterDeleteHref={afterDeleteHref} module={definition.slug} id={row.id} updatedAt={text(row.updated_at)} name={text(row[definition.columns[0]?.key]) || definition.title} />
                             </> : null}
                           </TableCell>

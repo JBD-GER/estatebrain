@@ -666,7 +666,7 @@ export const moduleDefinitions: Record<string, ModuleDefinition> = {
       },
       { name: "source_name", label: "Quelle", type: "text", required: true },
     ],
-    createLabel: "Bewertung erfassen",
+    createLabel: "Manuelle Bewertung",
     emptyTitle: "Noch keine Bewertung",
     emptyDescription:
       "Hinterlege einen manuellen Marktwert mit Quelle und Bewertungsdatum.",
